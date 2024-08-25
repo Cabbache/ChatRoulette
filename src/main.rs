@@ -89,11 +89,11 @@ async fn main() {
 	// initialize tracing
 	//tracing_subscriber::fmt::init();
 
-	let state = AppState {
+	let state = Arc::new(Mutex::new(AppState {
 		users: HashMap::new(),
 		chats: HashMap::new(),
 		next_room: None,
-	};
+	}));
 
 	// build our application with a route
 	let app = Router::new()
@@ -108,38 +108,41 @@ async fn main() {
 }
 
 async fn exit_room(
-	State(mut state): State<AppState>,
+	State(state): State<Arc<Mutex<AppState>>>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
 	
 }
 
 async fn read_messages(
-	State(mut state): State<AppState>,
+	State(state): State<Arc<Mutex<AppState>>>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
+	let mut stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
-	let user = cookie.get("uid").and_then(|uid| state.users.get_mut(uid));
-	let user = match user {
-		Some(usr) => {
-			usr.last_seen = Instant::now();
-			usr
-		}
-		None => {
-			let newid = gen_rand_id_safe(&state.users);
-			response_headers.insert(
-				"Set-Cookie",
-				format!("uid={};", newid.clone()).parse().unwrap(),
-			);
-			state
-				.users
-				.entry(newid.clone())
-				.or_insert(UserState::new(newid))
+
+	let user = {
+		let user = cookie.get("uid").and_then(|uid| stateguard.users.get_mut(uid));
+		match user {
+			Some(usr) => {
+				usr.last_seen = Instant::now();
+				usr.clone()
+			}
+			None => {
+				let newid = gen_rand_id_safe(&stateguard.users);
+				response_headers.insert(
+					"Set-Cookie",
+					format!("uid={};", newid.clone()).parse().unwrap(),
+				);
+				let newuser = UserState::new(newid.clone());
+				stateguard.users.insert(newid, newuser.clone());
+				newuser
+			}
 		}
 	};
 
 	let resp = match &user.room_id {
-		Some(room_id) => state
+		Some(room_id) => stateguard
 			.chats
 			.get(room_id)
 			.unwrap()
@@ -150,22 +153,22 @@ async fn read_messages(
 			.map(|m| m.msg)
 			.collect::<Vec<String>>()
 			.join("\n"),
-		None => match state.next_room {
+		None => match &stateguard.next_room.clone() {
 			Some(room) => {
 				let mut roomguard = room.lock().unwrap();
 				roomguard.users.insert(user.id.clone());
 				if roomguard.users.len() >= 2 {
-					state.next_room = None;
+					stateguard.next_room = None;
 					String::from("Joined room")
 				} else {
 					String::from("Waiting for interlocutor")
 				}
 			},
 			None => {
-				let room_id = gen_rand_id_safe(&state.chats);
+				let room_id = gen_rand_id_safe(&stateguard.chats);
 				let newroom = Arc::new(Mutex::new(ChatRoom::new(user.id.clone())));
-				state.next_room = Some(newroom.clone());
-				state.chats.insert(room_id, newroom);
+				stateguard.next_room = Some(newroom.clone());
+				stateguard.chats.insert(room_id, newroom);
 				String::from("Waiting for interlocutor")
 			}
 		}
@@ -175,15 +178,16 @@ async fn read_messages(
 }
 
 async fn send_message(
-	State(mut state): State<AppState>,
+	State(state): State<Arc<Mutex<AppState>>>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 	body: String,
 ) -> impl IntoResponse {
+	let mut stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
 	match cookie.get("uid")
-		.and_then(|uid| state.users.get(uid).map(|user| (uid, user)))
+		.and_then(|uid| stateguard.users.get(uid).map(|user| (uid, user)))
 		.and_then(|(uid, user)| user.room_id.as_ref().map(|room_id| (uid, room_id)))
-		.and_then(|(uid, room_id)| state.chats.get_mut(room_id).map(|room| (uid, room)))
+		.and_then(|(uid, room_id)| stateguard.chats.get(room_id).map(|room| (uid, room)))
 	{
 		Some((uid, room)) => {
 			room.lock().unwrap().messages.push(Message::new(uid.to_string(), body));
