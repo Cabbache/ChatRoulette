@@ -25,6 +25,7 @@
             justify-content: space-between;
             align-items: center;
             box-sizing: border-box;
+            position: relative;
         }
 
         header h1 {
@@ -45,21 +46,53 @@
             fill: #ff4d4d;
         }
 
-        .exit-button::after {
+        /* Dropdown content that appears on hover */
+        .exit-button .dropdown-content {
+            visibility: hidden;
+            opacity: 0;
             position: absolute;
             top: 30px;
-            left: -20px;
+            left: -200px;
             background-color: #333;
             color: #fff;
-            padding: 5px 10px;
+            padding: 10px;
             border-radius: 5px;
-            font-size: 0.9rem;
-            display: none;
-            white-space: nowrap;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1;
+            width: 200px;
+            text-align: center;
+            transition: visibility 0.3s, opacity 0.3s ease-in-out;
         }
 
-        .exit-button:hover::after {
+        .exit-button .dropdown-content::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: calc(50% - 5px);
+            border-width: 5px;
+            border-style: solid;
+            border-color: transparent transparent #333 transparent;
+        }
+
+        .exit-button:hover .dropdown-content,
+        .exit-button .dropdown-content:hover {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .confirm-exit {
             display: block;
+            background-color: #ff4d4d;
+            color: #fff;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .confirm-exit:hover {
+            background-color: #e60000;
         }
 
         main {
@@ -145,12 +178,16 @@
 
     <header>
         <h1>Strangerdanger.lol</h1>
-        <button class="exit-button">
+        <div class="exit-button">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                 <path d="M10 9V3h10v18H10v-6h-2v8h14V1H8v8z"/>
                 <path d="M9.293 15.707L5.586 12l3.707-3.707L7.879 7.879 3 12.757l4.879 4.878z"/>
             </svg>
-        </button>
+            <div class="dropdown-content">
+                <p>Leave?</p>
+                <a href="/exit" class="confirm-exit">Exit</a>
+            </div>
+        </div>
     </header>
 
     <main>
@@ -167,7 +204,7 @@
             <!-- Add more messages as needed -->
         </div>
         <form action="/" method="POST">
-            <input type="text" id="message" name="message" placeholder="Write" required>
+            <input type="text" id="message" name="message" placeholder="..." required>
             <button type="submit" aria-label="Send">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                     <path d="M2 21l21-9-21-9v7l15 2-15 2z"/>
