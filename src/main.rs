@@ -15,7 +15,12 @@ use headers::Cookie;
 use axum::http::HeaderMap;
 
 use rand_core::{OsRng, RngCore};
-use std::{collections::{HashMap, HashSet}, hash::Hash, sync::{Arc, Mutex}, time::Instant};
+use std::{
+	collections::{HashMap, HashSet},
+	hash::Hash,
+	sync::{Arc, Mutex},
+	time::Instant,
+};
 
 type UserId = String;
 type ChatId = String;
@@ -32,8 +37,7 @@ impl UserState {
 	}
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Message {
 	sender: UserId,
 	time: Instant,
@@ -45,7 +49,7 @@ impl Message {
 		Self {
 			sender: from,
 			msg: msg,
-			time: Instant::now()
+			time: Instant::now(),
 		}
 	}
 }
@@ -115,7 +119,6 @@ async fn exit_room(
 	State(state): State<Arc<Mutex<AppState>>>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
-	
 }
 
 async fn read_messages(
@@ -126,7 +129,9 @@ async fn read_messages(
 	let mut response_headers = HeaderMap::new();
 
 	let user = {
-		let user = cookie.get("uid").and_then(|uid| stateguard.users.get_mut(uid));
+		let user = cookie
+			.get("uid")
+			.and_then(|uid| stateguard.users.get_mut(uid));
 		match user {
 			Some(usr) => {
 				usr.last_seen = Instant::now();
@@ -147,23 +152,20 @@ async fn read_messages(
 
 	let resp = match &user.room_id {
 		Some(room_id) => {
-			let roomguard = stateguard
-				.chats
-				.get(room_id)
-				.unwrap()
-				.lock().unwrap();
+			let roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
 
 			match roomguard.users.len() {
 				1 => String::from("Waiting for interlocutor"),
-				2 => roomguard.messages
+				2 => roomguard
+					.messages
 					.iter()
 					.cloned()
 					.map(|m| m.msg)
 					.collect::<Vec<String>>()
 					.join("\n"),
-				_ => String::from("Room in unknown state")
+				_ => String::from("Room in unknown state"),
 			}
-		},
+		}
 		None => match &stateguard.next_room.clone() {
 			Some(room) => {
 				let mut roomguard = room.lock().unwrap();
@@ -176,7 +178,7 @@ async fn read_messages(
 				} else {
 					String::from("Waiting for interlocutor")
 				}
-			},
+			}
 			None => {
 				let room_id = gen_rand_id_safe(&stateguard.chats);
 				let newroom = Arc::new(Mutex::new(ChatRoom::new(room_id.clone(), user.id.clone())));
@@ -186,7 +188,7 @@ async fn read_messages(
 				muser.room_id = Some(room_id);
 				String::from("Waiting for interlocutor")
 			}
-		}
+		},
 	};
 
 	(response_headers, resp)
@@ -199,14 +201,18 @@ async fn send_message(
 ) -> impl IntoResponse {
 	let stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
-	match cookie.get("uid")
+	match cookie
+		.get("uid")
 		.and_then(|uid| stateguard.users.get(uid).map(|user| (uid, user)))
 		.and_then(|(uid, user)| user.room_id.as_ref().map(|room_id| (uid, room_id)))
 		.and_then(|(uid, room_id)| stateguard.chats.get(room_id).map(|room| (uid, room)))
 	{
 		Some((uid, room)) => {
-			room.lock().unwrap().messages.push(Message::new(uid.to_string(), body));
-		},
+			room.lock()
+				.unwrap()
+				.messages
+				.push(Message::new(uid.to_string(), body));
+		}
 		None => {
 			response_headers.insert("Location", "/".parse().expect("weird"));
 		}
@@ -215,13 +221,16 @@ async fn send_message(
 	response_headers
 }
 
-async fn dump_states(
-	State(state): State<Arc<Mutex<AppState>>>,
-) -> impl IntoResponse {
+async fn dump_states(State(state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
 	let stateguard = state.lock().unwrap();
 	let mut dump = String::new();
 	for (id, user) in &stateguard.users {
-		dump = format!("{}\n{}: {}", dump, id, user.room_id.clone().unwrap_or("none".to_string()));
+		dump = format!(
+			"{}\n{}: {}",
+			dump,
+			id,
+			user.room_id.clone().unwrap_or("none".to_string())
+		);
 	}
 	for (roomid, room) in &stateguard.chats {
 		dump = format!("{}\n{} -> {:?}", dump, roomid, room.lock().unwrap().users);
