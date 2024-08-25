@@ -17,7 +17,6 @@ use axum::http::HeaderMap;
 use rand_core::{OsRng, RngCore};
 use std::{
 	collections::{HashMap, HashSet},
-	hash::Hash,
 	sync::{Arc, Mutex},
 	time::Instant,
 };
@@ -68,6 +67,7 @@ struct ChatRoom {
 	id: ChatId,
 	users: HashSet<UserId>,
 	messages: Vec<Message>,
+	terminator: Option<UserId>,
 	created: Instant,
 }
 
@@ -78,6 +78,7 @@ impl ChatRoom {
 		Self {
 			id: id,
 			users: users,
+			terminator: None,
 			messages: Vec::new(),
 			created: Instant::now(),
 		}
@@ -119,6 +120,26 @@ async fn exit_room(
 	State(state): State<Arc<Mutex<AppState>>>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
+	let mut stateguard = state.lock().unwrap();
+	let mut response_headers = HeaderMap::new();
+	match cookie
+		.get("uid")
+		.and_then(|uid| stateguard.users.get(uid).map(|user| (uid, user)))
+		.and_then(|(uid, user)| user.room_id.as_ref().map(|room_id| (uid, room_id)))
+		.and_then(|(uid, room_id)| stateguard.chats.get(room_id).map(|room| (uid, room.clone())))
+	{
+		Some((uid, room)) => {
+			let mut roomguard = room.lock().unwrap();
+			roomguard.terminator = Some(uid.to_string());
+			let muser = stateguard.users.get_mut(uid).unwrap();
+			muser.room_id = None;
+		}
+		None => {
+			response_headers.insert("Location", "/".parse().expect("weird"));
+		}
+	};
+
+	response_headers
 }
 
 async fn read_messages(
@@ -140,7 +161,7 @@ async fn read_messages(
 			None => {
 				let newid = gen_rand_id_safe(&stateguard.users);
 				response_headers.insert(
-					"Set-Cookie",
+					SET_COOKIE,
 					format!("uid={};", newid.clone()).parse().unwrap(),
 				);
 				let newuser = UserState::new(newid.clone());
@@ -252,15 +273,3 @@ fn gen_rand_id() -> String {
 	OsRng.fill_bytes(&mut key);
 	URL_SAFE.encode(key)
 }
-
-//fn set_uid_cookie(uid: String) -> impl IntoResponse {
-//	Response::builder()
-//		.status(http::StatusCode::SEE_OTHER)
-//		.header("Location", "/")
-//		.header(
-//			"Set-Cookie",
-//			format!("uid={}; Max-Age=999999", uid),
-//		)
-//		.body(http_body::Empty::new())
-//		.unwrap()
-//}
