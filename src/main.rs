@@ -42,6 +42,7 @@ impl UserState {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 struct Message {
 	sender: UserId,
 	time: Instant,
@@ -58,18 +59,20 @@ impl Message {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ChatRoom {
+	id: ChatId,
 	users: HashSet<UserId>,
 	messages: Vec<Message>,
 	created: Instant,
 }
 
 impl ChatRoom {
-	fn new(initiator: UserId) -> Self {
+	fn new(id: ChatId, initiator: UserId) -> Self {
 		let mut users = HashSet::new();
 		users.insert(initiator);
 		Self {
+			id: id,
 			users: users,
 			messages: Vec::new(),
 			created: Instant::now(),
@@ -77,7 +80,7 @@ impl ChatRoom {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct AppState {
 	users: HashMap<UserId, UserState>,
 	chats: HashMap<ChatId, Arc<Mutex<ChatRoom>>>,
@@ -98,6 +101,7 @@ async fn main() {
 	// build our application with a route
 	let app = Router::new()
 		.route("/", get(read_messages))
+		.route("/dump", get(dump_states))
 		.route("/exit", get(exit_room))
 		.route("/", post(send_message))
 		.with_state(state);
@@ -157,6 +161,8 @@ async fn read_messages(
 			Some(room) => {
 				let mut roomguard = room.lock().unwrap();
 				roomguard.users.insert(user.id.clone());
+				let muser = stateguard.users.get_mut(&user.id).unwrap();
+				muser.room_id = Some(roomguard.id.clone());
 				if roomguard.users.len() >= 2 {
 					stateguard.next_room = None;
 					String::from("Joined room")
@@ -166,9 +172,11 @@ async fn read_messages(
 			},
 			None => {
 				let room_id = gen_rand_id_safe(&stateguard.chats);
-				let newroom = Arc::new(Mutex::new(ChatRoom::new(user.id.clone())));
+				let newroom = Arc::new(Mutex::new(ChatRoom::new(room_id.clone(), user.id.clone())));
 				stateguard.next_room = Some(newroom.clone());
-				stateguard.chats.insert(room_id, newroom);
+				stateguard.chats.insert(room_id.clone(), newroom);
+				let muser = stateguard.users.get_mut(&user.id).unwrap();
+				muser.room_id = Some(room_id);
 				String::from("Waiting for interlocutor")
 			}
 		}
@@ -182,7 +190,7 @@ async fn send_message(
 	TypedHeader(cookie): TypedHeader<Cookie>,
 	body: String,
 ) -> impl IntoResponse {
-	let mut stateguard = state.lock().unwrap();
+	let stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
 	match cookie.get("uid")
 		.and_then(|uid| stateguard.users.get(uid).map(|user| (uid, user)))
@@ -198,6 +206,20 @@ async fn send_message(
 	};
 
 	response_headers
+}
+
+async fn dump_states(
+	State(state): State<Arc<Mutex<AppState>>>,
+) -> impl IntoResponse {
+	let stateguard = state.lock().unwrap();
+	let mut dump = String::new();
+	for (id, user) in &stateguard.users {
+		dump = format!("{}\n{}: {}", dump, id, user.room_id.clone().unwrap_or("none".to_string()));
+	}
+	for (roomid, room) in &stateguard.chats {
+		dump = format!("{}\n{} -> {:?}", dump, roomid, room.lock().unwrap().users);
+	}
+	dump
 }
 
 fn gen_rand_id_safe<T>(map: &HashMap<String, T>) -> String {
