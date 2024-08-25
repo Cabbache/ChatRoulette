@@ -149,6 +149,10 @@ async fn read_messages(
 	let mut stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
 
+	let template = include_str!("tera/index.tera");
+	let mut tera = Tera::default();
+	tera.add_raw_template("index", )
+
 	let user = {
 		let user = cookie
 			.get("uid")
