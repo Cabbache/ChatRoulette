@@ -20,15 +20,6 @@ use std::{collections::{HashMap, HashSet}, hash::Hash, sync::{Arc, Mutex}, time:
 type UserId = String;
 type ChatId = String;
 
-#[derive(Clone, Debug)]
-struct UserState {
-	first_seen: Instant,
-	last_seen: Instant,
-	chat_ctr: u64,
-	room_id: Option<ChatId>,
-	id: UserId,
-}
-
 impl UserState {
 	fn new(id: UserId) -> Self {
 		Self {
@@ -57,6 +48,15 @@ impl Message {
 			time: Instant::now()
 		}
 	}
+}
+
+#[derive(Clone, Debug)]
+struct UserState {
+	first_seen: Instant,
+	last_seen: Instant,
+	chat_ctr: u64,
+	room_id: Option<ChatId>,
+	id: UserId,
 }
 
 #[derive(Clone, Debug)]
@@ -146,17 +146,24 @@ async fn read_messages(
 	};
 
 	let resp = match &user.room_id {
-		Some(room_id) => stateguard
-			.chats
-			.get(room_id)
-			.unwrap()
-			.lock().unwrap()
-			.messages
-			.iter()
-			.cloned()
-			.map(|m| m.msg)
-			.collect::<Vec<String>>()
-			.join("\n"),
+		Some(room_id) => {
+			let roomguard = stateguard
+				.chats
+				.get(room_id)
+				.unwrap()
+				.lock().unwrap();
+
+			match roomguard.users.len() {
+				1 => String::from("Waiting for interlocutor"),
+				2 => roomguard.messages
+					.iter()
+					.cloned()
+					.map(|m| m.msg)
+					.collect::<Vec<String>>()
+					.join("\n"),
+				_ => String::from("Room in unknown state")
+			}
+		},
 		None => match &stateguard.next_room.clone() {
 			Some(room) => {
 				let mut roomguard = room.lock().unwrap();
