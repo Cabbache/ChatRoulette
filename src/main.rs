@@ -8,6 +8,8 @@ use axum::{
 
 use base64::{engine::general_purpose::URL_SAFE, Engine as _};
 
+use tera::{Context, Tera};
+
 use axum_extra::TypedHeader;
 
 use headers::Cookie;
@@ -36,7 +38,7 @@ impl UserState {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 struct Message {
 	sender: UserId,
 	time: Instant,
@@ -148,10 +150,14 @@ async fn read_messages(
 ) -> impl IntoResponse {
 	let mut stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
+	response_headers.insert("Content-Type", "text/html".parse().expect("weird"));
 
-	let template = include_str!("tera/index.tera");
+	let template = include_str!("template/index.tera");
 	let mut tera = Tera::default();
-	tera.add_raw_template("index", )
+	tera.add_raw_template("index", template).unwrap();
+	let mut context = Context::new();
+	context.insert("messages", &vec![Message::new("123".to_string(), "hello1".to_string()), Message::new("123".to_string(), "hello2".to_string())]);
+	let rendered = tera.render("index", &context).unwrap();
 
 	let user = {
 		let user = cookie
@@ -180,7 +186,8 @@ async fn read_messages(
 			let roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
 
 			match roomguard.users.len() {
-				1 => String::from("Waiting for interlocutor"),
+				//1 => String::from("Waiting for interlocutor"),
+				1 => rendered,
 				2 => roomguard
 					.messages
 					.iter()
@@ -211,7 +218,8 @@ async fn read_messages(
 				stateguard.chats.insert(room_id.clone(), newroom);
 				let muser = stateguard.users.get_mut(&user.id).unwrap();
 				muser.room_id = Some(room_id);
-				String::from("Waiting for interlocutor")
+				//String::from("Waiting for interlocutor")
+				rendered
 			}
 		},
 	};

@@ -191,18 +191,18 @@
     </header>
 
     <main>
-        <div class="chat-window">
-            <!-- Messages will be displayed here -->
-            <div class="message">
-                <strong>User1:</strong>
-                Hello, everyone!
-            </div>
-            <div class="message">
-                <strong>User2:</strong>
-                Hi! How are you?
-            </div>
-            <!-- Add more messages as needed -->
-        </div>
+				{% if messages %}
+					<div class="chat-window">
+						{% for message in messages %}
+							<div class="message">
+								<strong>User</strong>
+								{{ message.msg }}
+							</div>
+						{% endfor %}
+					</div>
+				{% else %}
+					<p>no messages</p>
+				{% endif %}
         <form action="/" method="POST">
             <input type="text" id="message" name="message" placeholder="..." required>
             <button type="submit" aria-label="Send">
