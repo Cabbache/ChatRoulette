@@ -6,6 +6,8 @@ use axum::{
 	Router,
 };
 
+use url::form_urlencoded;
+
 use serde::Serialize;
 
 use base64::{engine::general_purpose::URL_SAFE, Engine as _};
@@ -278,10 +280,22 @@ async fn send_message(
 		.and_then(|(uid, room_id)| stateguard.chats.get(room_id).map(|room| (uid, room)))
 	{
 		Some((uid, room)) => {
-			room.lock()
-				.unwrap()
-				.messages
-				.push(Message::new(Some(uid.to_string()), body));
+			let parsed: Vec<(String, String)> = form_urlencoded::parse(body.as_bytes())
+				.into_owned()
+				.collect();
+			if parsed.len() == 1 {
+				let (param, value) = &parsed[0];
+				if param == "message" {
+					room.lock()
+					.unwrap()
+					.messages
+					.push(Message::new(Some(uid.to_string()), value.to_string()));
+				} else {
+					eprintln!("param not named message");
+				}
+			} else {
+				eprintln!("got weird params");
+			}
 		}
 		None => {}
 	};
