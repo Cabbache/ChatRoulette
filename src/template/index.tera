@@ -205,31 +205,33 @@
     </header>
 
     <main>
-			{% if messages %}
+			{% if messages is defined %}
 				<div class="chat-window">
 					{% for message in messages %}
 						<div class="message">
-							{% if message.iamsender %}
+							{% if message.senderkind == "YOU" %}
 								<strong>You</strong>
-							{% else %}
+							{% elif message.senderkind == "THEM" %}
 								<strong>Them</strong>
+							{% elif message.senderkind == "SYSTEM" %}
+								<strong>System</strong>
+							{% else %}
+								<strong>Unknown</strong>
 							{% endif %}
 							msg: {{ message.msg }}
 						</div>
 					{% endfor %}
 				</div>
-        <form action="/" method="POST">
-            <input type="text" id="message" name="message" placeholder="..." required>
-            <button type="submit" aria-label="Send">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path d="M2 21l21-9-21-9v7l15 2-15 2z"/>
-                </svg>
-            </button>
-        </form>
+				<form action="/" method="POST">
+						<input type="text" id="message" name="message" placeholder="..." required>
+						<button type="submit" aria-label="Send">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+										<path d="M2 21l21-9-21-9v7l15 2-15 2z"/>
+								</svg>
+						</button>
+				</form>
 			{% elif waiting %}
 				<div class="loader"></div>
-			{% else %}
-				<p>unknown state</p>
 			{% endif %}
     </main>
 

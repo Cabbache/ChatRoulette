@@ -1,7 +1,7 @@
 use axum::{
 	extract::State,
 	http::{header::SET_COOKIE, StatusCode},
-	response::{IntoResponse, Response},
+	response::{IntoResponse},
 	routing::{get, post},
 	Router,
 };
@@ -22,7 +22,7 @@ use rand_core::{OsRng, RngCore};
 use std::{
 	collections::{HashMap, HashSet},
 	sync::{Arc, Mutex},
-	time::{Duration, SystemTime, UNIX_EPOCH},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 type UserId = String;
@@ -43,20 +43,27 @@ impl UserState {
 
 #[derive(Clone, Debug)]
 struct Message {
-	sender: UserId,
+	sender: Option<UserId>,
 	time: u64,
 	msg: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
+enum SenderKind {
+	YOU,
+	THEM,
+	SYSTEM,
+}
+
+#[derive(Clone, Debug, Serialize)]
 struct MessageView {
-	iamsender: bool,
+	senderkind: SenderKind,
 	time: u64,
 	msg: String,
 }
 
 impl Message {
-	fn new(from: UserId, msg: String) -> Self {
+	fn new(from: Option<UserId>, msg: String) -> Self {
 		Self {
 			sender: from,
 			msg: msg,
@@ -64,9 +71,19 @@ impl Message {
 		}
 	}
 
-	fn pov(&self, user: &UserId) -> MessageView {
+	fn pov(&self, userid: &Option<UserId>) -> MessageView {
 		MessageView {
-			iamsender: self.sender == *user,
+			senderkind: match userid {
+				Some(user) => match &self.sender {
+					Some(sender) => if *sender == *user {
+						SenderKind::YOU
+					} else {
+						SenderKind::THEM
+					},
+					None => SenderKind::SYSTEM
+				}
+				None => SenderKind::SYSTEM
+			},
 			time: self.time,
 			msg: self.msg.clone()
 		}
@@ -95,12 +112,19 @@ impl ChatRoom {
 	fn new(id: ChatId, initiator: UserId) -> Self {
 		let mut users = HashSet::new();
 		users.insert(initiator);
+		let timenow = get_timestamp();
 		Self {
 			id: id,
 			users: users,
 			terminator: None,
-			messages: Vec::new(),
-			created: get_timestamp(),
+			messages: vec![
+				Message {
+					sender: None,
+					time: timenow,
+					msg: format!("Chat initiated {}", timenow)
+				}
+			],
+			created: timenow,
 		}
 	}
 }
@@ -204,9 +228,9 @@ async fn read_messages(
 			match roomguard.users.len() {
 				1 => context.insert("waiting", &true),
 				2 => {
-					context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&user.id)).collect::<Vec<MessageView>>())
+					context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&Some(user.id.clone()))).collect::<Vec<MessageView>>())
 				},
-				_ => {},
+				x => {panic!("Room can't have {} users", x)},
 			}
 		}
 		None => match &stateguard.next_room.clone() {
@@ -217,10 +241,8 @@ async fn read_messages(
 				muser.room_id = Some(roomguard.id.clone());
 				if roomguard.users.len() >= 2 {
 					stateguard.next_room = None;
-					//String::from("Joined room")
-					context.insert("messages", &Vec::<MessageView>::new());
+					context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&Some(user.id.clone()))).collect::<Vec<MessageView>>());
 				} else {
-					//String::from("Waiting for interlocutor")
 					context.insert("waiting", &true);
 				}
 			}
@@ -259,7 +281,7 @@ async fn send_message(
 			room.lock()
 				.unwrap()
 				.messages
-				.push(Message::new(uid.to_string(), body));
+				.push(Message::new(Some(uid.to_string()), body));
 		}
 		None => {}
 	};
