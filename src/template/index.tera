@@ -172,6 +172,20 @@
             width: 100%;
             box-sizing: border-box;
         }
+
+				.loader {
+					border: 16px solid #f3f3f3;
+					border-top: 16px solid #3498db;
+					border-radius: 50%;
+					width: 120px;
+					height: 120px;
+					animation: spin 2s linear infinite;
+				}
+
+				@keyframes spin {
+					0% { transform: rotate(0deg); }
+					100% { transform: rotate(360deg); }
+					}
     </style>
 </head>
 <body>
@@ -191,22 +205,19 @@
     </header>
 
     <main>
-				{% if messages %}
-					<div class="chat-window">
-						{% for message in messages %}
-							<div class="message">
-								{% if message.iamsender %}
-									<strong>You</strong>
-								{% else %}
-									<strong>Them</strong>
-								{% endif %}
-								msg: {{ message.msg }}
-							</div>
-						{% endfor %}
-					</div>
-				{% elif waiting %}
-					<p>Waiting for interlocutor</p>
-				{% endif %}
+			{% if messages %}
+				<div class="chat-window">
+					{% for message in messages %}
+						<div class="message">
+							{% if message.iamsender %}
+								<strong>You</strong>
+							{% else %}
+								<strong>Them</strong>
+							{% endif %}
+							msg: {{ message.msg }}
+						</div>
+					{% endfor %}
+				</div>
         <form action="/" method="POST">
             <input type="text" id="message" name="message" placeholder="..." required>
             <button type="submit" aria-label="Send">
@@ -215,6 +226,11 @@
                 </svg>
             </button>
         </form>
+			{% elif waiting %}
+				<div class="loader"></div>
+			{% else %}
+				<p>unknown state</p>
+			{% endif %}
     </main>
 
     <footer>

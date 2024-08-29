@@ -203,8 +203,11 @@ async fn read_messages(
 
 			match roomguard.users.len() {
 				1 => context.insert("waiting", &true),
-				2 => context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&user.id)).collect::<Vec<MessageView>>()),
-				_ => {},
+				2 => {
+					println!("inserted messages");
+					context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&user.id)).collect::<Vec<MessageView>>())
+				},
+				_ => {println!("problem")},
 			}
 		}
 		None => match &stateguard.next_room.clone() {
@@ -216,6 +219,7 @@ async fn read_messages(
 				if roomguard.users.len() >= 2 {
 					stateguard.next_room = None;
 					//String::from("Joined room")
+					println!("inserted messages 2");
 					context.insert("messages", &Vec::<MessageView>::new());
 				} else {
 					//String::from("Waiting for interlocutor")
