@@ -195,13 +195,17 @@
 					<div class="chat-window">
 						{% for message in messages %}
 							<div class="message">
-								<strong>User</strong>
-								{{ message.msg }}
+								{% if message.iamsender %}
+									<strong>You</strong>
+								{% else %}
+									<strong>Them</strong>
+								{% endif %}
+								msg: {{ message.msg }}
 							</div>
 						{% endfor %}
 					</div>
-				{% else %}
-					<p>no messages</p>
+				{% elif waiting %}
+					<p>Waiting for interlocutor</p>
 				{% endif %}
         <form action="/" method="POST">
             <input type="text" id="message" name="message" placeholder="..." required>

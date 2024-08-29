@@ -1047,6 +1047,7 @@ dependencies = [
  "headers",
  "rand",
  "rand_core",
+ "serde",
  "tera",
  "tokio",
 ]

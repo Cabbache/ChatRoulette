@@ -6,6 +6,8 @@ use axum::{
 	Router,
 };
 
+use serde::Serialize;
+
 use base64::{engine::general_purpose::URL_SAFE, Engine as _};
 
 use tera::{Context, Tera};
@@ -20,7 +22,7 @@ use rand_core::{OsRng, RngCore};
 use std::{
 	collections::{HashMap, HashSet},
 	sync::{Arc, Mutex},
-	time::Instant,
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 type UserId = String;
@@ -28,9 +30,10 @@ type ChatId = String;
 
 impl UserState {
 	fn new(id: UserId) -> Self {
+		let tstamp = get_timestamp();
 		Self {
-			first_seen: Instant::now(),
-			last_seen: Instant::now(),
+			first_seen: tstamp,
+			last_seen: tstamp,
 			chat_ctr: 0,
 			room_id: None,
 			id: id,
@@ -38,10 +41,17 @@ impl UserState {
 	}
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 struct Message {
 	sender: UserId,
-	time: Instant,
+	time: u64,
+	msg: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct MessageView {
+	iamsender: bool,
+	time: u64,
 	msg: String,
 }
 
@@ -50,15 +60,23 @@ impl Message {
 		Self {
 			sender: from,
 			msg: msg,
-			time: Instant::now(),
+			time: get_timestamp(),
+		}
+	}
+
+	fn pov(&self, user: &UserId) -> MessageView {
+		MessageView {
+			iamsender: self.sender == *user,
+			time: self.time,
+			msg: self.msg.clone()
 		}
 	}
 }
 
 #[derive(Clone, Debug)]
 struct UserState {
-	first_seen: Instant,
-	last_seen: Instant,
+	first_seen: u64,
+	last_seen: u64,
 	chat_ctr: u64,
 	room_id: Option<ChatId>,
 	id: UserId,
@@ -70,7 +88,7 @@ struct ChatRoom {
 	users: HashSet<UserId>,
 	messages: Vec<Message>,
 	terminator: Option<UserId>,
-	created: Instant,
+	created: u64,
 }
 
 impl ChatRoom {
@@ -82,7 +100,7 @@ impl ChatRoom {
 			users: users,
 			terminator: None,
 			messages: Vec::new(),
-			created: Instant::now(),
+			created: get_timestamp(),
 		}
 	}
 }
@@ -156,8 +174,6 @@ async fn read_messages(
 	let mut tera = Tera::default();
 	tera.add_raw_template("index", template).unwrap();
 	let mut context = Context::new();
-	context.insert("messages", &vec![Message::new("123".to_string(), "hello1".to_string()), Message::new("123".to_string(), "hello2".to_string())]);
-	let rendered = tera.render("index", &context).unwrap();
 
 	let user = {
 		let user = cookie
@@ -165,7 +181,7 @@ async fn read_messages(
 			.and_then(|uid| stateguard.users.get_mut(uid));
 		match user {
 			Some(usr) => {
-				usr.last_seen = Instant::now();
+				usr.last_seen = get_timestamp();
 				usr.clone()
 			}
 			None => {
@@ -186,16 +202,9 @@ async fn read_messages(
 			let roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
 
 			match roomguard.users.len() {
-				//1 => String::from("Waiting for interlocutor"),
-				1 => rendered,
-				2 => roomguard
-					.messages
-					.iter()
-					.cloned()
-					.map(|m| m.msg)
-					.collect::<Vec<String>>()
-					.join("\n"),
-				_ => String::from("Room in unknown state"),
+				1 => context.insert("waiting", &true),
+				2 => context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&user.id)).collect::<Vec<MessageView>>()),
+				_ => {},
 			}
 		}
 		None => match &stateguard.next_room.clone() {
@@ -206,9 +215,11 @@ async fn read_messages(
 				muser.room_id = Some(roomguard.id.clone());
 				if roomguard.users.len() >= 2 {
 					stateguard.next_room = None;
-					String::from("Joined room")
+					//String::from("Joined room")
+					context.insert("messages", &Vec::<MessageView>::new());
 				} else {
-					String::from("Waiting for interlocutor")
+					//String::from("Waiting for interlocutor")
+					context.insert("waiting", &true);
 				}
 			}
 			None => {
@@ -218,13 +229,14 @@ async fn read_messages(
 				stateguard.chats.insert(room_id.clone(), newroom);
 				let muser = stateguard.users.get_mut(&user.id).unwrap();
 				muser.room_id = Some(room_id);
-				//String::from("Waiting for interlocutor")
-				rendered
+				context.insert("waiting", &true);
 			}
 		},
 	};
 
-	(response_headers, resp)
+	//context.insert("messages", &vec![Message::new("123".to_string(), "hello1".to_string()), Message::new("123".to_string(), "hello2".to_string())]);
+	let response_html = tera.render("index", &context).unwrap();
+	(response_headers, response_html)
 }
 
 async fn send_message(
@@ -234,6 +246,7 @@ async fn send_message(
 ) -> impl IntoResponse {
 	let stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
+	response_headers.insert("Location", "/".parse().expect("weird"));
 	match cookie
 		.get("uid")
 		.and_then(|uid| stateguard.users.get(uid).map(|user| (uid, user)))
@@ -246,12 +259,10 @@ async fn send_message(
 				.messages
 				.push(Message::new(uid.to_string(), body));
 		}
-		None => {
-			response_headers.insert("Location", "/".parse().expect("weird"));
-		}
+		None => {}
 	};
 
-	response_headers
+	(StatusCode::SEE_OTHER, response_headers)
 }
 
 async fn dump_states(State(state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
@@ -284,4 +295,12 @@ fn gen_rand_id() -> String {
 	let mut key = [0u8; 21];
 	OsRng.fill_bytes(&mut key);
 	URL_SAFE.encode(key)
+}
+
+fn get_timestamp() -> u64 {
+	let start = SystemTime::now();
+	start
+		.duration_since(UNIX_EPOCH)
+		.expect("Time went backwards")
+		.as_millis().try_into().expect("500 million years?")
 }
