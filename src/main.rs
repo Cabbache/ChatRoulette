@@ -71,7 +71,6 @@ impl Message {
 
 	fn pov(&self, userid: &Option<UserId>) -> MessageView {
 		let elapsed = get_timestamp() - self.time;
-		println!("{}", elapsed);
 		MessageView {
 			senderkind: match userid {
 				Some(user) => match &self.sender {
@@ -146,6 +145,8 @@ fn format_duration(milliseconds: u64) -> String {
 	} else if milliseconds >= seconds_in_minute * 1000 {
 		// If the duration is 1 minute or more, but less than an hour, format it in minutes
 		format!("{}m", milliseconds / (seconds_in_minute * 1000))
+	} else if milliseconds < 5000 {
+		String::from("now")
 	} else {
 		// Otherwise, format it in seconds
 		format!("{}s", milliseconds / 1000)

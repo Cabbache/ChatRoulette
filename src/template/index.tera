@@ -210,15 +210,16 @@
 					{% for message in messages %}
 						<div class="message">
 							{% if message.senderkind == "YOU" %}
-								<strong>You</strong>
+								{% set sender = "You" %}
 							{% elif message.senderkind == "THEM" %}
-								<strong>Them</strong>
+								{% set sender = "Them" %}
 							{% elif message.senderkind == "SYSTEM" %}
-								<strong>System</strong>
+								{% set sender = "System" %}
 							{% else %}
-								<strong>Unknown</strong>
+								{% set sender = "Unknown" %}
 							{% endif %}
-							msg: {{ message.msg }}
+							<strong>{{ sender }} | {{ message.time}} </strong>
+							{{ message.msg }}
 						</div>
 					{% endfor %}
 				</div>
