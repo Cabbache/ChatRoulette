@@ -223,7 +223,7 @@ async fn read_messages(
 		}
 	};
 
-	let resp = match &user.room_id {
+	match &user.room_id {
 		Some(room_id) => {
 			let roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
 
