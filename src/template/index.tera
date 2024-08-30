@@ -132,7 +132,7 @@
             margin-bottom: 10px;
             border-radius: 5px;
             background-color: #e1e1e1;
-            color: #333;
+            color: #000;
         }
 
         .message strong {
@@ -140,6 +140,12 @@
             margin-bottom: 5px;
             color: #555;
         }
+
+				.sender_system {
+					align-items: center;
+					justify-content: center;
+					color: blue;
+				}
 
         form {
             display: flex;
@@ -216,19 +222,26 @@
 			{% if messages is defined %}
 				<div class="chat-window">
 					{% for message in messages %}
-						<div class="message">
+							{% set sender_class = "sender_system" %}
 							{% if message.senderkind == "YOU" %}
 								{% set sender = "You" %}
+								{% set sender_class = "sender_you" %}
 							{% elif message.senderkind == "THEM" %}
 								{% set sender = "Them" %}
-							{% elif message.senderkind == "SYSTEM" %}
-								{% set sender = "System" %}
-							{% else %}
-								{% set sender = "Unknown" %}
+								{% set sender_class = "sender_them" %}
 							{% endif %}
-							<strong>{{ sender }} | {{ message.time}} </strong>
-							{{ message.msg }}
-						</div>
+
+							{% if message.senderkind == "SYSTEM" %}
+								<div class="message {{ sender_class }}">
+									<strong>{{ message.time }}</strong>
+									{{ message.msg }}
+								</div>
+							{% else %}
+								<div class="message {{ sender_class }}">
+									<strong>{{ sender }} | {{ message.time}}</strong>
+									{{ message.msg }}
+								</div>
+							{% endif %}
 					{% endfor %}
 				</div>
 				<form action="/" method="POST">
