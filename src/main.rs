@@ -121,7 +121,7 @@ impl ChatRoom {
 			messages: vec![Message {
 				sender: None,
 				time: timenow,
-				msg: format!("Chat initiated {}", timenow),
+				msg: String::from("Chat initiated"),
 			}],
 			created: timenow,
 		}
