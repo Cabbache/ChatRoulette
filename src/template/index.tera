@@ -116,7 +116,7 @@
             border-radius: 5px;
             overflow-y: auto;
             margin-bottom: 20px;
-            height: calc(100% - 60px); /* Adjusted height for remaining space */
+            height: calc(100% - 60px);
         }
 
         .message {
@@ -224,7 +224,7 @@
 					{% endfor %}
 				</div>
 				<form action="/" method="POST">
-						<input type="text" id="message" name="message" placeholder="..." required>
+						<input type="text" id="message" name="message" placeholder=">" required autofocus>
 						<button type="submit" aria-label="Send">
 								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 										<path d="M2 21l21-9-21-9v7l15 2-15 2z"/>
