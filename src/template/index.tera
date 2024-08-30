@@ -142,9 +142,9 @@
         }
 
 				.sender_system {
-					align-items: center;
+					display: flex;
 					justify-content: center;
-					color: blue;
+					border-radius: 30px;
 				}
 
         form {
@@ -222,26 +222,26 @@
 			{% if messages is defined %}
 				<div class="chat-window">
 					{% for message in messages %}
-							{% set sender_class = "sender_system" %}
-							{% if message.senderkind == "YOU" %}
-								{% set sender = "You" %}
-								{% set sender_class = "sender_you" %}
-							{% elif message.senderkind == "THEM" %}
-								{% set sender = "Them" %}
-								{% set sender_class = "sender_them" %}
-							{% endif %}
+						{% set sender_class = "sender_system" %}
+						{% if message.senderkind == "YOU" %}
+							{% set sender = "You" %}
+							{% set sender_class = "sender_you" %}
+						{% elif message.senderkind == "THEM" %}
+							{% set sender = "Them" %}
+							{% set sender_class = "sender_them" %}
+						{% endif %}
 
+						<div class="message {{ sender_class }}">
 							{% if message.senderkind == "SYSTEM" %}
-								<div class="message {{ sender_class }}">
-									<strong>{{ message.time }}</strong>
-									{{ message.msg }}
-								</div>
+								<span style="display: flex; flex-direction: row">
+									{{ message.msg }}&nbsp;
+									<strong>| {{ message.time }}</strong>
+								</span>
 							{% else %}
-								<div class="message {{ sender_class }}">
-									<strong>{{ sender }} | {{ message.time}}</strong>
-									{{ message.msg }}
-								</div>
+								<strong>{{ sender }} | {{ message.time}}</strong>
+								{{ message.msg }}
 							{% endif %}
+						</div>
 					{% endfor %}
 				</div>
 				<form action="/" method="POST">
