@@ -1,18 +1,18 @@
 use axum::{
 	extract::State,
 	http::{header::SET_COOKIE, StatusCode},
-	response::{IntoResponse},
+	response::IntoResponse,
 	routing::{get, post},
 	Router,
 };
 
-use url::form_urlencoded;
-use serde::Serialize;
-use base64::{engine::general_purpose::URL_SAFE, Engine as _};
-use tera::{Context, Tera};
-use axum_extra::TypedHeader;
-use headers::Cookie;
 use axum::http::HeaderMap;
+use axum_extra::TypedHeader;
+use base64::{engine::general_purpose::URL_SAFE, Engine as _};
+use headers::Cookie;
+use serde::Serialize;
+use tera::{Context, Tera};
+use url::form_urlencoded;
 
 use tokio::time;
 
@@ -20,7 +20,7 @@ use rand_core::{OsRng, RngCore};
 use std::{
 	collections::{HashMap, HashSet},
 	sync::{Arc, Mutex},
-	time::{SystemTime, UNIX_EPOCH, Duration},
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 type UserId = String;
@@ -56,7 +56,7 @@ enum SenderKind {
 #[derive(Clone, Debug, Serialize)]
 struct MessageView {
 	senderkind: SenderKind,
-	time: u64,
+	time: String,
 	msg: String,
 }
 
@@ -70,20 +70,24 @@ impl Message {
 	}
 
 	fn pov(&self, userid: &Option<UserId>) -> MessageView {
+		let elapsed = get_timestamp() - self.time;
+		println!("{}", elapsed);
 		MessageView {
 			senderkind: match userid {
 				Some(user) => match &self.sender {
-					Some(sender) => if *sender == *user {
-						SenderKind::YOU
-					} else {
-						SenderKind::THEM
-					},
-					None => SenderKind::SYSTEM
-				}
-				None => SenderKind::SYSTEM
+					Some(sender) => {
+						if *sender == *user {
+							SenderKind::YOU
+						} else {
+							SenderKind::THEM
+						}
+					}
+					None => SenderKind::SYSTEM,
+				},
+				None => SenderKind::SYSTEM,
 			},
-			time: self.time,
-			msg: self.msg.clone()
+			time: "0m".to_string(),
+			msg: self.msg.clone(),
 		}
 	}
 }
@@ -115,13 +119,11 @@ impl ChatRoom {
 			id: id,
 			users: users,
 			terminator: None,
-			messages: vec![
-				Message {
-					sender: None,
-					time: timenow,
-					msg: format!("Chat initiated {}", timenow)
-				}
-			],
+			messages: vec![Message {
+				sender: None,
+				time: timenow,
+				msg: format!("Chat initiated {}", timenow),
+			}],
 			created: timenow,
 		}
 	}
@@ -132,6 +134,22 @@ struct AppState {
 	users: HashMap<UserId, UserState>,
 	chats: HashMap<ChatId, Arc<Mutex<ChatRoom>>>,
 	next_room: Option<Arc<Mutex<ChatRoom>>>,
+}
+
+fn format_duration(milliseconds: u64) -> String {
+	let seconds_in_minute = 60;
+	let seconds_in_hour = 3600;
+
+	if milliseconds >= seconds_in_hour * 1000 {
+		// If the duration is 1 hour or more, format it in hours
+		format!("{}h", milliseconds / (seconds_in_hour * 1000))
+	} else if milliseconds >= seconds_in_minute * 1000 {
+		// If the duration is 1 minute or more, but less than an hour, format it in minutes
+		format!("{}m", milliseconds / (seconds_in_minute * 1000))
+	} else {
+		// Otherwise, format it in seconds
+		format!("{}s", milliseconds / 1000)
+	}
 }
 
 async fn cleanup(millis: u64, state: Arc<Mutex<AppState>>) {
@@ -181,8 +199,12 @@ async fn exit_room(
 		.get("uid")
 		.and_then(|uid| stateguard.users.get(uid).map(|user| (uid, user)))
 		.and_then(|(uid, user)| user.room_id.as_ref().map(|room_id| (uid, room_id)))
-		.and_then(|(uid, room_id)| stateguard.chats.get(room_id).map(|room| (uid, room.clone())))
-	{
+		.and_then(|(uid, room_id)| {
+			stateguard
+				.chats
+				.get(room_id)
+				.map(|room| (uid, room.clone()))
+		}) {
 		Some((uid, room)) => {
 			let mut roomguard = room.lock().unwrap();
 			roomguard.terminator = Some(uid.to_string());
@@ -238,10 +260,17 @@ async fn read_messages(
 
 			match roomguard.users.len() {
 				1 => context.insert("waiting", &true),
-				2 => {
-					context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&Some(user.id.clone()))).collect::<Vec<MessageView>>())
-				},
-				x => {panic!("Room can't have {} users", x)},
+				2 => context.insert(
+					"messages",
+					&roomguard
+						.messages
+						.iter()
+						.map(|msg| msg.pov(&Some(user.id.clone())))
+						.collect::<Vec<MessageView>>(),
+				),
+				x => {
+					panic!("Room can't have {} users", x)
+				}
 			}
 		}
 		None => match &stateguard.next_room.clone() {
@@ -252,7 +281,14 @@ async fn read_messages(
 				muser.room_id = Some(roomguard.id.clone());
 				if roomguard.users.len() >= 2 {
 					stateguard.next_room = None;
-					context.insert("messages", &roomguard.messages.iter().map(|msg| msg.pov(&Some(user.id.clone()))).collect::<Vec<MessageView>>());
+					context.insert(
+						"messages",
+						&roomguard
+							.messages
+							.iter()
+							.map(|msg| msg.pov(&Some(user.id.clone())))
+							.collect::<Vec<MessageView>>(),
+					);
 				} else {
 					context.insert("waiting", &true);
 				}
@@ -296,9 +332,9 @@ async fn send_message(
 				let (param, value) = &parsed[0];
 				if param == "message" {
 					room.lock()
-					.unwrap()
-					.messages
-					.push(Message::new(Some(uid.to_string()), value.to_string()));
+						.unwrap()
+						.messages
+						.push(Message::new(Some(uid.to_string()), value.to_string()));
 				} else {
 					eprintln!("param not named message");
 				}
@@ -349,5 +385,7 @@ fn get_timestamp() -> u64 {
 	start
 		.duration_since(UNIX_EPOCH)
 		.expect("Time went backwards")
-		.as_millis().try_into().expect("500 million years?")
+		.as_millis()
+		.try_into()
+		.expect("500 million years?")
 }
