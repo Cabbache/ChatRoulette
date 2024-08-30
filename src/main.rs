@@ -86,7 +86,7 @@ impl Message {
 				},
 				None => SenderKind::SYSTEM,
 			},
-			time: "0m".to_string(),
+			time: format_duration(elapsed),
 			msg: self.msg.clone(),
 		}
 	}
