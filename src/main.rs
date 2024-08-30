@@ -334,10 +334,13 @@ async fn send_message(
 			if parsed.len() == 1 {
 				let (param, value) = &parsed[0];
 				if param == "message" {
-					room.lock()
-						.unwrap()
-						.messages
+					let mut roomguard = room.lock().unwrap();
+					if !roomguard.terminator.is_none() {
+						roomguard.messages
 						.push(Message::new(Some(uid.to_string()), value.to_string()));
+					} else {
+						eprintln!("cannot send to terminated room");
+					}
 				} else {
 					eprintln!("param not named message");
 				}
