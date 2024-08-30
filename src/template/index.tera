@@ -113,11 +113,13 @@
         .chat-window {
             flex: 1;
             padding: 10px;
+						display: flex;
             background-color: #f9f9f9;
             border: 1px solid #ddd;
             border-radius: 5px;
             overflow-y: auto;
             margin-bottom: 20px;
+						flex-direction: column-reverse;
             height: calc(100% - 60px);
         }
 

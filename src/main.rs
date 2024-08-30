@@ -266,6 +266,7 @@ async fn read_messages(
 					&roomguard
 						.messages
 						.iter()
+						.rev()
 						.map(|msg| msg.pov(&Some(user.id.clone())))
 						.collect::<Vec<MessageView>>(),
 				),
@@ -287,6 +288,7 @@ async fn read_messages(
 						&roomguard
 							.messages
 							.iter()
+							.rev()
 							.map(|msg| msg.pov(&Some(user.id.clone())))
 							.collect::<Vec<MessageView>>(),
 					);
