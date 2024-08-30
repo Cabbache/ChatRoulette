@@ -147,6 +147,10 @@
 					border-radius: 30px;
 				}
 
+				.sender_them {
+					color: red;
+				}
+
         form {
             display: flex;
             align-items: center;
@@ -239,7 +243,7 @@
 								</span>
 							{% else %}
 								<strong>{{ sender }} | {{ message.time}}</strong>
-								{{ message.msg }}
+								&gt;&nbsp;{{ message.msg }}
 							{% endif %}
 						</div>
 					{% endfor %}
