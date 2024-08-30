@@ -7,24 +7,20 @@ use axum::{
 };
 
 use url::form_urlencoded;
-
 use serde::Serialize;
-
 use base64::{engine::general_purpose::URL_SAFE, Engine as _};
-
 use tera::{Context, Tera};
-
 use axum_extra::TypedHeader;
-
 use headers::Cookie;
-
 use axum::http::HeaderMap;
+
+use tokio::time;
 
 use rand_core::{OsRng, RngCore};
 use std::{
 	collections::{HashMap, HashSet},
 	sync::{Arc, Mutex},
-	time::{SystemTime, UNIX_EPOCH},
+	time::{SystemTime, UNIX_EPOCH, Duration},
 };
 
 type UserId = String;
@@ -138,6 +134,14 @@ struct AppState {
 	next_room: Option<Arc<Mutex<ChatRoom>>>,
 }
 
+async fn cleanup(millis: u64, state: Arc<Mutex<AppState>>) {
+	let mut interval = time::interval(Duration::from_millis(millis));
+	loop {
+		interval.tick().await;
+		let stateguard = state.lock().unwrap();
+	}
+}
+
 #[tokio::main]
 async fn main() {
 	// initialize tracing
@@ -148,6 +152,11 @@ async fn main() {
 		chats: HashMap::new(),
 		next_room: None,
 	}));
+
+	let cleanupclone = state.clone();
+	tokio::spawn(async move {
+		cleanup(2000, cleanupclone).await;
+	});
 
 	// build our application with a route
 	let app = Router::new()
