@@ -196,7 +196,8 @@ async fn exit_room(
 ) -> impl IntoResponse {
 	let mut stateguard = state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
-	match cookie
+	response_headers.insert("Location", "/".parse().expect("weird"));
+	if let Some((uid, room)) = cookie
 		.get("uid")
 		.and_then(|uid| stateguard.users.get(uid).map(|user| (uid, user)))
 		.and_then(|(uid, user)| user.room_id.as_ref().map(|room_id| (uid, room_id)))
@@ -205,20 +206,15 @@ async fn exit_room(
 				.chats
 				.get(room_id)
 				.map(|room| (uid, room.clone()))
-		}) {
-		Some((uid, room)) => {
-			let mut roomguard = room.lock().unwrap();
-			roomguard.terminator = Some(uid.to_string());
-			roomguard.messages.push(Message::new(None, String::from("User left the room")));
-			let muser = stateguard.users.get_mut(uid).unwrap();
-			muser.room_id = None;
-		}
-		None => {
-			response_headers.insert("Location", "/".parse().expect("weird"));
-		}
-	};
+	}) {
+		let mut roomguard = room.lock().unwrap();
+		roomguard.terminator = Some(uid.to_string());
+		roomguard.messages.push(Message::new(None, String::from("User left the room")));
+		let muser = stateguard.users.get_mut(uid).unwrap();
+		muser.room_id = None;
+	}
 
-	response_headers
+	(StatusCode::SEE_OTHER, response_headers)
 }
 
 async fn read_messages(
