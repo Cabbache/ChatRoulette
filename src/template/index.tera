@@ -248,9 +248,14 @@
 						</div>
 					{% endfor %}
 				</div>
+				{% if terminated %}
+					{% set toggle = "disabled" %}
+				{% else %}
+					{% set toggle = "" %}
+				{% endif %}
 				<form action="/" method="POST">
-						<input type="text" id="message" name="message" placeholder=">" required autofocus>
-						<button type="submit" aria-label="Send">
+						<input type="text" id="message" name="message" placeholder=">" required autofocus {{ toggle }}>
+						<button type="submit" aria-label="Send" {{ toggle }}>
 								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 										<path d="M2 21l21-9-21-9v7l15 2-15 2z"/>
 								</svg>
@@ -264,6 +269,5 @@
     <footer>
         strangerdanger.lol
     </footer>
-
 </body>
 </html>

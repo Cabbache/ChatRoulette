@@ -209,6 +209,7 @@ async fn exit_room(
 		Some((uid, room)) => {
 			let mut roomguard = room.lock().unwrap();
 			roomguard.terminator = Some(uid.to_string());
+			roomguard.messages.push(Message::new(None, String::from("User left the room")));
 			let muser = stateguard.users.get_mut(uid).unwrap();
 			muser.room_id = None;
 		}
@@ -259,6 +260,9 @@ async fn read_messages(
 		Some(room_id) => {
 			let roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
 
+			if roomguard.terminator.is_some() {
+				context.insert("terminated", &true);
+			}
 			match roomguard.users.len() {
 				1 => context.insert("waiting", &true),
 				2 => context.insert(
@@ -283,6 +287,9 @@ async fn read_messages(
 				muser.room_id = Some(roomguard.id.clone());
 				if roomguard.users.len() >= 2 {
 					stateguard.next_room = None;
+					if roomguard.terminator.is_some() {
+						context.insert("terminated", &true);
+					}
 					context.insert(
 						"messages",
 						&roomguard
@@ -335,7 +342,7 @@ async fn send_message(
 				let (param, value) = &parsed[0];
 				if param == "message" {
 					let mut roomguard = room.lock().unwrap();
-					if !roomguard.terminator.is_none() {
+					if !roomguard.terminator.is_some() {
 						roomguard.messages
 						.push(Message::new(Some(uid.to_string()), value.to_string()));
 					} else {
