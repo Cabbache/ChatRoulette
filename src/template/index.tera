@@ -186,15 +186,6 @@
             fill: #555;
         }
 
-        footer {
-            padding: 10px;
-            background-color: #333;
-            color: #fff;
-            text-align: center;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
 				.loader {
 					border: 16px solid #f3f3f3;
 					border-top: 16px solid #3498db;
@@ -271,9 +262,5 @@
 				<div class="loader"></div>
 			{% endif %}
     </main>
-
-    <footer>
-        strangerdanger.lol
-    </footer>
 </body>
 </html>
