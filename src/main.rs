@@ -6,6 +6,10 @@ use axum::{
 	Router,
 };
 
+use env_logger;
+
+use log::{info, trace, debug};
+
 use axum::http::HeaderMap;
 use axum_extra::TypedHeader;
 use base64::{engine::general_purpose::URL_SAFE, Engine as _};
@@ -25,6 +29,17 @@ use std::{
 
 type UserId = String;
 type ChatId = String;
+type TimeStamp = u64;
+
+trait Elapsed {
+	fn elapsed(&self) -> u64;
+}
+
+impl Elapsed for TimeStamp {
+	fn elapsed(&self) -> u64 {
+		get_timestamp() - self
+	}
+}
 
 impl UserState {
 	fn new(id: UserId) -> Self {
@@ -93,8 +108,8 @@ impl Message {
 
 #[derive(Clone, Debug)]
 struct UserState {
-	first_seen: u64,
-	last_seen: u64,
+	first_seen: TimeStamp,
+	last_seen: TimeStamp,
 	chat_ctr: u64,
 	room_id: Option<ChatId>,
 	id: UserId,
@@ -106,7 +121,7 @@ struct ChatRoom {
 	users: HashSet<UserId>,
 	messages: Vec<Message>,
 	terminator: Option<UserId>,
-	created: u64,
+	created: TimeStamp,
 }
 
 impl ChatRoom {
@@ -126,6 +141,15 @@ impl ChatRoom {
 			created: timenow,
 		}
 	}
+
+	fn dump(&self) -> String {
+		self
+			.messages
+			.iter()
+			.map(|msg| format!("{}|{}|{}", msg.time, msg.sender.clone().unwrap_or("system".to_string()), msg.msg))
+			.collect::<Vec<String>>()
+			.join("\n")
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -140,15 +164,12 @@ fn format_duration(milliseconds: u64) -> String {
 	let seconds_in_hour = 3600;
 
 	if milliseconds >= seconds_in_hour * 1000 {
-		// If the duration is 1 hour or more, format it in hours
 		format!("{}h", milliseconds / (seconds_in_hour * 1000))
 	} else if milliseconds >= seconds_in_minute * 1000 {
-		// If the duration is 1 minute or more, but less than an hour, format it in minutes
 		format!("{}m", milliseconds / (seconds_in_minute * 1000))
 	} else if milliseconds < 5000 {
 		String::from("now")
 	} else {
-		// Otherwise, format it in seconds
 		format!("{}s", milliseconds / 1000)
 	}
 }
@@ -158,13 +179,21 @@ async fn cleanup(millis: u64, state: Arc<Mutex<AppState>>) {
 	loop {
 		interval.tick().await;
 		let stateguard = state.lock().unwrap();
+		for (id, user) in &stateguard.users {
+			if user.last_seen.elapsed() > 20000 {
+				debug!("User {} left", user.id);
+			}
+		}
 	}
 }
+
 
 #[tokio::main]
 async fn main() {
 	// initialize tracing
 	//tracing_subscriber::fmt::init();
+
+	env_logger::init();
 
 	let state = Arc::new(Mutex::new(AppState {
 		users: HashMap::new(),
@@ -245,6 +274,7 @@ async fn read_messages(
 			}
 			None => {
 				let newid = gen_rand_id_safe(&stateguard.users);
+				debug!("New user {}", newid);
 				response_headers.insert(
 					SET_COOKIE,
 					format!("uid={};", newid.clone()).parse().unwrap(),
