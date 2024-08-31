@@ -8,7 +8,7 @@ use axum::{
 
 use env_logger;
 
-use log::{info, trace, debug};
+use log::{debug, info, trace};
 
 use axum::http::HeaderMap;
 use axum_extra::TypedHeader;
@@ -143,10 +143,16 @@ impl ChatRoom {
 	}
 
 	fn dump(&self) -> String {
-		self
-			.messages
+		self.messages
 			.iter()
-			.map(|msg| format!("{}|{}|{}", msg.time, msg.sender.clone().unwrap_or("system".to_string()), msg.msg))
+			.map(|msg| {
+				format!(
+					"{}|{}|{}",
+					msg.time,
+					msg.sender.clone().unwrap_or("system".to_string()),
+					msg.msg
+				)
+			})
 			.collect::<Vec<String>>()
 			.join("\n")
 	}
@@ -157,6 +163,52 @@ struct AppState {
 	users: HashMap<UserId, UserState>,
 	chats: HashMap<ChatId, Arc<Mutex<ChatRoom>>>,
 	next_room: Option<Arc<Mutex<ChatRoom>>>,
+}
+
+impl AppState {
+
+	fn cleanup(&mut self) {
+		let users_to_remove: Vec<(UserId, Option<ChatId>)> = self
+			.users
+			.iter()
+			.filter(|(k, v)| v.last_seen.elapsed() > 20000)
+			.map(|(k, v)| (k.clone(), v.room_id.clone()))
+			.collect();
+		for (userid, _) in &users_to_remove {
+			debug!("removing {}", userid);
+		}
+		for (userid, roomid) in users_to_remove {
+			match roomid {
+				Some(id) => {
+					let room = self
+						.chats
+						.get(&id)
+						.expect("Couldn't find room user points to")
+						.clone(); //clones the arc mutex reference
+					let roomguard = room.lock().unwrap();
+					match &roomguard.terminator {
+						Some(terminator) => {
+							if *terminator != userid {
+								//other user left, and this one too
+								self.chats.remove(&id); //so we remove the room
+								self.users.remove(&userid); //and the this user
+								debug!("Removed user {}", userid);
+							}
+						}
+						None => {
+							//user is in a non terminated chat
+							//TODO
+							debug!("will not remove user");
+						}
+					}
+				}
+				None => {
+					self.users.remove(&userid); //There may exist rooms which they have already exit
+					debug!("Removed user {}", userid);
+				}
+			}
+		}
+	}
 }
 
 fn format_duration(milliseconds: u64) -> String {
@@ -174,20 +226,6 @@ fn format_duration(milliseconds: u64) -> String {
 	}
 }
 
-async fn cleanup(millis: u64, state: Arc<Mutex<AppState>>) {
-	let mut interval = time::interval(Duration::from_millis(millis));
-	loop {
-		interval.tick().await;
-		let stateguard = state.lock().unwrap();
-		for (id, user) in &stateguard.users {
-			if user.last_seen.elapsed() > 20000 {
-				debug!("User {} left", user.id);
-			}
-		}
-	}
-}
-
-
 #[tokio::main]
 async fn main() {
 	// initialize tracing
@@ -201,9 +239,15 @@ async fn main() {
 		next_room: None,
 	}));
 
+	let millis = 2000;
 	let cleanupclone = state.clone();
 	tokio::spawn(async move {
-		cleanup(2000, cleanupclone).await;
+		let mut interval = time::interval(Duration::from_millis(millis));
+		loop {
+			interval.tick().await;
+			let mut stateguard = cleanupclone.lock().unwrap();
+			stateguard.cleanup();
+		}
 	});
 
 	// build our application with a route
@@ -235,15 +279,18 @@ async fn exit_room(
 				.chats
 				.get(room_id)
 				.map(|room| (uid, room.clone()))
-	}) {
+		}) {
 		let mut roomguard = room.lock().unwrap();
 		let muser = stateguard.users.get_mut(uid).unwrap();
 		muser.room_id = None;
-		if let Some(terminator) = &roomguard.terminator { //remaining user is leaving
+		if roomguard.terminator.is_some() {
+			//remaining user is leaving
 			stateguard.chats.remove(&roomguard.id);
 		} else {
 			roomguard.terminator = Some(uid.to_string());
-			roomguard.messages.push(Message::new(None, String::from("User left the room")));
+			roomguard
+				.messages
+				.push(Message::new(None, String::from("User left the room")));
 		}
 	}
 
@@ -373,8 +420,9 @@ async fn send_message(
 				if param == "message" {
 					let mut roomguard = room.lock().unwrap();
 					if !roomguard.terminator.is_some() {
-						roomguard.messages
-						.push(Message::new(Some(uid.to_string()), value.to_string()));
+						roomguard
+							.messages
+							.push(Message::new(Some(uid.to_string()), value.to_string()));
 					} else {
 						eprintln!("cannot send to terminated room");
 					}
