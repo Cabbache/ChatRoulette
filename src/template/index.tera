@@ -210,16 +210,18 @@
 
     <header>
         <h1>Strangerdanger.lol</h1>
-        <div class="exit-button">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                <path d="M10 9V3h10v18H10v-6h-2v8h14V1H8v8z"/>
-                <path d="M9.293 15.707L5.586 12l3.707-3.707L7.879 7.879 3 12.757l4.879 4.878z"/>
-            </svg>
-            <div class="dropdown-content">
-                <p>Leave?</p>
-                <a href="/exit" class="confirm-exit">Exit</a>
-            </div>
-        </div>
+				{% if not waiting %}
+					<div class="exit-button">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+									<path d="M10 9V3h10v18H10v-6h-2v8h14V1H8v8z"/>
+									<path d="M9.293 15.707L5.586 12l3.707-3.707L7.879 7.879 3 12.757l4.879 4.878z"/>
+							</svg>
+							<div class="dropdown-content">
+									<p>Leave?</p>
+									<a href="/exit" class="confirm-exit">Exit</a>
+							</div>
+					</div>
+				{% endif %}
     </header>
 
     <main>
