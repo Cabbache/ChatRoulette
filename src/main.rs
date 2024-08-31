@@ -181,17 +181,14 @@ struct AppState {
 impl AppState {
 
 	fn cleanup(&mut self) {
-		let users_to_remove: Vec<(UserId, Option<ChatId>)> = self
+		let users_to_remove: Vec<UserState> = self
 			.users
 			.iter()
-			.filter(|(k, v)| v.last_seen.elapsed() > 20000)
-			.map(|(k, v)| (k.clone(), v.room_id.clone()))
+			.filter(|(_, v)| v.last_seen.elapsed() > 20000)
+			.map(|(_, v)| v.clone())
 			.collect();
-		for (userid, _) in &users_to_remove {
-			debug!("removing {}", userid);
-		}
-		for (userid, roomid) in users_to_remove {
-			match roomid {
+		for user in users_to_remove {
+			match user.room_id {
 				Some(id) => {
 					let room = self
 						.chats
@@ -201,11 +198,12 @@ impl AppState {
 					let roomguard = room.lock().unwrap();
 					match &roomguard.terminator {
 						Some(terminator) => {
-							if *terminator != userid {
+							if *terminator != user.id {
 								//other user left, and this one too
 								self.chats.remove(&id); //so we remove the room
-								self.users.remove(&userid); //and the this user
-								debug!("Removed user {}", userid);
+								self.users.remove(&user.id); //and the this user
+								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
+								debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
 							}
 						}
 						None => {
@@ -216,8 +214,8 @@ impl AppState {
 					}
 				}
 				None => {
-					self.users.remove(&userid); //There may exist rooms which they have already exit
-					debug!("Removed user {}", userid);
+					self.users.remove(&user.id); //There may exist rooms which they have already exit
+					debug!("Removed user {}. Age: {}", user.id, user.first_seen.elapsed());
 				}
 			}
 		}
@@ -433,6 +431,7 @@ async fn send_message(
 				if param == "message" {
 					let mut roomguard = room.lock().unwrap();
 					if !roomguard.terminator.is_some() {
+						//TODO delete old messages to keep max len 1000
 						roomguard
 							.messages
 							.push(Message::new(Some(uid.to_string()), value.to_string()));
