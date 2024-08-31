@@ -208,10 +208,14 @@ async fn exit_room(
 				.map(|room| (uid, room.clone()))
 	}) {
 		let mut roomguard = room.lock().unwrap();
-		roomguard.terminator = Some(uid.to_string());
-		roomguard.messages.push(Message::new(None, String::from("User left the room")));
 		let muser = stateguard.users.get_mut(uid).unwrap();
 		muser.room_id = None;
+		if let Some(terminator) = &roomguard.terminator { //remaining user is leaving
+			stateguard.chats.remove(&roomguard.id);
+		} else {
+			roomguard.terminator = Some(uid.to_string());
+			roomguard.messages.push(Message::new(None, String::from("User left the room")));
+		}
 	}
 
 	(StatusCode::SEE_OTHER, response_headers)
