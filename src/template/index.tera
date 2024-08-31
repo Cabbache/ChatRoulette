@@ -44,6 +44,7 @@
             width: 24px;
             height: 24px;
             fill: #ff4d4d;
+						background-color: grey;
         }
 
         /* Dropdown content that appears on hover */
@@ -251,6 +252,9 @@
 									<strong>| {{ message.time }}</strong>
 								</span>
 							{% else %}
+								{% if message.senderkind == "YOU" and message.seen %}
+									<div>seen</div>
+								{% endif %}
 								<strong>{{ sender }} | {{ message.time}}</strong>
 								&gt;&nbsp;{{ message.msg }}
 							{% endif %}

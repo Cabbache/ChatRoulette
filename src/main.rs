@@ -57,11 +57,12 @@ impl UserState {
 #[derive(Clone, Debug)]
 struct Message {
 	sender: Option<UserId>,
+	seen: bool,
 	time: u64,
 	msg: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 enum SenderKind {
 	YOU,
 	THEM,
@@ -73,11 +74,13 @@ struct MessageView {
 	senderkind: SenderKind,
 	time: String,
 	msg: String,
+	seen: bool,
 }
 
 impl Message {
 	fn new(from: Option<UserId>, msg: String) -> Self {
 		Self {
+			seen: false,
 			sender: from,
 			msg: msg,
 			time: get_timestamp(),
@@ -102,7 +105,16 @@ impl Message {
 			},
 			time: format_duration(elapsed),
 			msg: self.msg.clone(),
+			seen: self.seen, //true if seen by the other user (not self.sender)
 		}
+	}
+
+	fn pov_mut(&mut self, userid: &Option<UserId>) -> MessageView {
+		let view = self.pov(userid);
+		if view.senderkind == SenderKind::THEM {
+			self.seen = true;
+		}
+		view
 	}
 }
 
@@ -134,6 +146,7 @@ impl ChatRoom {
 			users: users,
 			terminator: None,
 			messages: vec![Message {
+				seen: false,
 				sender: None,
 				time: timenow,
 				msg: String::from("Chat initiated"),
@@ -335,7 +348,7 @@ async fn read_messages(
 
 	match &user.room_id {
 		Some(room_id) => {
-			let roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
+			let mut roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
 
 			if roomguard.terminator.is_some() {
 				context.insert("terminated", &true);
@@ -346,9 +359,9 @@ async fn read_messages(
 					"messages",
 					&roomguard
 						.messages
-						.iter()
+						.iter_mut()
 						.rev()
-						.map(|msg| msg.pov(&Some(user.id.clone())))
+						.map(|msg| msg.pov_mut(&Some(user.id.clone())))
 						.collect::<Vec<MessageView>>(),
 				),
 				x => {
@@ -371,9 +384,9 @@ async fn read_messages(
 						"messages",
 						&roomguard
 							.messages
-							.iter()
+							.iter_mut()
 							.rev()
-							.map(|msg| msg.pov(&Some(user.id.clone())))
+							.map(|msg| msg.pov_mut(&Some(user.id.clone())))
 							.collect::<Vec<MessageView>>(),
 					);
 				} else {
