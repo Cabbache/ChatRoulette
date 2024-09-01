@@ -263,7 +263,8 @@ async fn main() {
 
 	// build our application with a route
 	let app = Router::new()
-		.route("/", get(read_messages))
+		.route("/", get(get_index))
+		.route("/messages", get(read_messages))
 		.route("/dump", get(dump_states))
 		.route("/exit", get(exit_room))
 		.route("/", post(send_message))
@@ -308,7 +309,7 @@ async fn exit_room(
 	(StatusCode::SEE_OTHER, response_headers)
 }
 
-async fn read_messages(
+async fn get_index(
 	State(state): State<Arc<Mutex<AppState>>>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
@@ -346,25 +347,12 @@ async fn read_messages(
 
 	match &user.room_id {
 		Some(room_id) => {
-			let mut roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
-
+			let roomguard = stateguard.chats.get(room_id).unwrap().lock().unwrap();
 			if roomguard.terminator.is_some() {
 				context.insert("terminated", &true);
 			}
-			match roomguard.users.len() {
-				1 => context.insert("waiting", &true),
-				2 => context.insert(
-					"messages",
-					&roomguard
-						.messages
-						.iter_mut()
-						.rev()
-						.map(|msg| msg.pov_mut(&Some(user.id.clone())))
-						.collect::<Vec<MessageView>>(),
-				),
-				x => {
-					panic!("Room can't have {} users", x)
-				}
+			if roomguard.users.len() == 1{
+				context.insert("waiting", &true);
 			}
 		}
 		None => match &stateguard.next_room.clone() {
@@ -378,15 +366,6 @@ async fn read_messages(
 					if roomguard.terminator.is_some() {
 						context.insert("terminated", &true);
 					}
-					context.insert(
-						"messages",
-						&roomguard
-							.messages
-							.iter_mut()
-							.rev()
-							.map(|msg| msg.pov_mut(&Some(user.id.clone())))
-							.collect::<Vec<MessageView>>(),
-					);
 				} else {
 					context.insert("waiting", &true);
 				}
@@ -403,8 +382,50 @@ async fn read_messages(
 		},
 	};
 
-	//context.insert("messages", &vec![Message::new("123".to_string(), "hello1".to_string()), Message::new("123".to_string(), "hello2".to_string())]);
 	let response_html = tera.render("index", &context).unwrap();
+	(response_headers, response_html)
+}
+
+async fn read_messages(
+	State(state): State<Arc<Mutex<AppState>>>,
+	TypedHeader(cookie): TypedHeader<Cookie>,
+) -> impl IntoResponse {
+	let mut stateguard = state.lock().unwrap();
+	let mut response_headers = HeaderMap::new();
+
+	let user = cookie
+		.get("uid")
+		.and_then(|uid| stateguard.users.get_mut(uid))
+		.map(|usr| {
+			usr.last_seen = get_timestamp();
+			usr.clone()
+		});
+
+	let response_html = match user.and_then(|usr| {
+		usr.room_id
+		.and_then(|roomid| stateguard.chats.get(&roomid))
+		.map(|roomref| {
+			let mut roomguard = roomref.lock().unwrap();
+			roomguard
+				.messages
+				.iter_mut()
+				.rev()
+				.map(|msg| msg.pov_mut(&Some(usr.id.clone())))
+				.collect::<Vec<MessageView>>()
+		})
+	}) {
+		Some(messages) => {
+			let template = include_str!("template/messages.tera");
+			let mut tera = Tera::default();
+			tera.add_raw_template("messages", template).unwrap();
+			let mut context = Context::new();
+			response_headers.insert("Content-Type", "text/html".parse().expect("weird"));
+			context.insert("messages", &messages);
+			tera.render("messages", &context).unwrap()
+		},
+		None => String::new()
+	};
+
 	(response_headers, response_html)
 }
 
