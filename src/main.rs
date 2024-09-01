@@ -6,6 +6,8 @@ use axum::{
 	Router,
 };
 
+use clap::Parser;
+
 use env_logger;
 
 use log::{debug, info, trace};
@@ -52,6 +54,27 @@ impl UserState {
 			id: id,
 		}
 	}
+}
+
+/// Chat application configuration parameters
+#[derive(Parser, Clone, Debug)]
+#[command(author = "Your Name <your.email@example.com>", version = "1.0", about = "Chat application with configurable parameters")]
+struct Args {
+	/// Cleanup poll frequency in milliseconds (default: 5000)
+	#[arg(long, default_value_t = 5000)]
+	cleanup_poll_frequency: u64,
+
+	/// Max number of messages in chat room (default: 100)
+	#[arg(long, default_value_t = 100)]
+	max_messages: usize,
+
+	/// Max idle time outside of chat in seconds (default: 20)
+	#[arg(long, default_value_t = 20)]
+	max_idle_outside: u64,
+
+	/// Max idle time inside chat in seconds (default: 300)
+	#[arg(long, default_value_t = 300)]
+	max_idle_inside: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +201,21 @@ impl ChatRoom {
 	}
 }
 
+#[derive(Debug)]
+struct AppConfigState {
+	state: AppState,
+	config: Args,
+}
+
+impl Clone for AppConfigState {
+	fn clone(&self) -> Self {
+		Self {
+			state: &self.state.clone(),
+			config: &self.config.clone(),
+		}
+	}
+}
+
 #[derive(Clone, Debug)]
 struct AppState {
 	users: HashMap<UserId, UserState>,
@@ -255,19 +293,21 @@ fn format_duration(milliseconds: u64) -> String {
 
 #[tokio::main]
 async fn main() {
-	// initialize tracing
-	//tracing_subscriber::fmt::init();
-
 	env_logger::init();
 
-	let state = Arc::new(Mutex::new(AppState {
-		users: HashMap::new(),
-		chats: HashMap::new(),
-		next_room: None,
-	}));
+	let args = Args::parse();
+
+	let configstate = AppConfigState {
+		state: Arc::new(Mutex::new(AppState {
+			users: HashMap::new(),
+			chats: HashMap::new(),
+			next_room: None,
+		})),
+		config: args,
+	};
 
 	let millis = 2000;
-	let cleanupclone = state.clone();
+	let cleanupclone = configstate.clone();
 	tokio::spawn(async move {
 		let mut interval = time::interval(Duration::from_millis(millis));
 		loop {
@@ -284,7 +324,7 @@ async fn main() {
 		.route("/dump", get(dump_states))
 		.route("/exit", get(exit_room))
 		.route("/", post(send_message))
-		.with_state(state);
+		.with_state(configstate);
 
 	// run our app with hyper, listening globally on port 3000
 	let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
