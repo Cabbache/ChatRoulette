@@ -206,6 +206,9 @@
 <body>
     <header>
 			<h1>Strangerdanger.lol</h1>
+			<div>
+				active users: {{ user_ctr }}
+			</div>
 			{% if not waiting %}
 				<div class="exit-button">
 					<svg fill="#000000" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 

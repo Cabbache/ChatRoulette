@@ -199,13 +199,13 @@ impl AppState {
 					match &roomguard.terminator {
 						Some(terminator) => {
 							if *terminator != user.id {
-								//other user left, and this one too
+								//other user left, and now this one too
 								self.chats.remove(&id); //so we remove the room
 								self.users.remove(&user.id); //and the this user
 								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
 								debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
 							}
-						}
+						},
 						None => {
 							//user is in a non terminated chat
 							//TODO
@@ -321,6 +321,7 @@ async fn get_index(
 	let mut tera = Tera::default();
 	tera.add_raw_template("index", template).unwrap();
 	let mut context = Context::new();
+	context.insert("user_ctr", &stateguard.users.len());
 
 	let user = {
 		let user = cookie
