@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<meta http-equiv="refresh" content="5">
     <title>Stranger danger lol</title>
     <style>
@@ -100,7 +99,6 @@
         main {
 						flex: 1;
 						overflow-y: auto;
-            padding: 20px;
             width: 100%;
             max-width: 100%;
             margin: 0 auto;
@@ -108,29 +106,15 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             display: flex;
             flex-direction: column;
-            flex: 1;
             box-sizing: border-box;
-						{% if waiting %}
-							justify-content: center;
-							align-items: center;
-						{% endif %}
         }
 
         .chat-window {
             flex: 1;
             padding: 10px;
 						display: flex;
-            background-color: #f2f2f2;
-            border: 1px solid #ddd;
-            border-radius: 5px;
             overflow-y: auto;
-            margin-bottom: 20px;
 						flex-direction: column-reverse;
-            height: calc(100% - 60px);
-
-						width: 80%;
-						margin-left: auto;
-						margin-right: auto;
         }
 
         .message {
