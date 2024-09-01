@@ -155,6 +155,13 @@ impl ChatRoom {
 		}
 	}
 
+	fn terminate(&mut self, user: UserId) {
+		self.terminator = Some(user);
+		self
+			.messages
+			.push(Message::new(None, String::from("User left the room")));
+	}
+
 	fn dump(&self) -> String {
 		self.messages
 			.iter()
@@ -181,13 +188,13 @@ struct AppState {
 impl AppState {
 
 	fn cleanup(&mut self) {
-		let users_to_remove: Vec<UserState> = self
+		let users_to_remove: Vec<(UserState, u64)> = self
 			.users
 			.iter()
-			.filter(|(_, v)| v.last_seen.elapsed() > 20000)
-			.map(|(_, v)| v.clone())
+			.map(|(_, v)| (v.clone(), v.last_seen.elapsed()))
+			.filter(|(_, t)| *t > 20000)
 			.collect();
-		for user in users_to_remove {
+		for (user, t) in users_to_remove {
 			match user.room_id {
 				Some(id) => {
 					let room = self
@@ -195,21 +202,30 @@ impl AppState {
 						.get(&id)
 						.expect("Couldn't find room user points to")
 						.clone(); //clones the arc mutex reference
-					let roomguard = room.lock().unwrap();
+					let mut roomguard = room.lock().unwrap();
 					match &roomguard.terminator {
-						Some(terminator) => {
-							if *terminator != user.id {
-								//other user left, and now this one too
-								self.chats.remove(&id); //so we remove the room
-								self.users.remove(&user.id); //and the this user
+						Some(terminator) => if *terminator != user.id {
+							//other user left, and now this one too
+							self.chats.remove(&id); //so we remove the room
+							self.users.remove(&user.id); //and the this user
+							debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
+							debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
+						}
+						None => match roomguard.users.len() { //User is in non terminated room
+							1 => { //Room conversation is not initiated, looking for other user
+								self.chats.remove(&id);
+								self.users.remove(&user.id);
+								assert!(Arc::ptr_eq(&room, &self.next_room.clone().expect("shouldnt be none")));
+								self.next_room = None;
 								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
 								debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
+							},
+							2 => if t > 300000 { //Room conversation is initiated and running
+								roomguard.terminate(user.id.clone());
+								self.users.remove(&id);
+								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
 							}
-						},
-						None => {
-							//user is in a non terminated chat
-							//TODO
-							debug!("will not remove user");
+							x => eprintln!("weird, room has {} users", x),
 						}
 					}
 				}
@@ -299,10 +315,7 @@ async fn exit_room(
 			//remaining user is leaving
 			stateguard.chats.remove(&roomguard.id);
 		} else {
-			roomguard.terminator = Some(uid.to_string());
-			roomguard
-				.messages
-				.push(Message::new(None, String::from("User left the room")));
+			roomguard.terminate(String::from(uid));
 		}
 	}
 
@@ -457,6 +470,9 @@ async fn send_message(
 						roomguard
 							.messages
 							.push(Message::new(Some(uid.to_string()), value.to_string()));
+						if roomguard.messages.len() > 5 {
+							roomguard.messages.remove(0);
+						}
 					} else {
 						eprintln!("cannot send to terminated room");
 					}
