@@ -244,15 +244,15 @@ impl AppState {
 					match &roomguard.terminator {
 						Some(terminator) => if *terminator != user.id {
 							//other user left, and now this one too
-							self.chats.remove(&id); //so we remove the room
-							self.users.remove(&user.id); //and the this user
+							assert!(self.chats.remove(&id).is_some()); //so we remove the room
+							assert!(self.users.remove(&user.id).is_some()); //and the this user
 							debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
 							debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
 						}
 						None => match roomguard.users.len() { //User is in non terminated room
 							1 => { //Room conversation is not initiated, looking for other user
-								self.chats.remove(&id);
-								self.users.remove(&user.id);
+								assert!(self.chats.remove(&id).is_some());
+								assert!(self.users.remove(&user.id).is_some());
 								assert!(Arc::ptr_eq(&room, &self.next_room.clone().expect("shouldnt be none")));
 								self.next_room = None;
 								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
@@ -260,7 +260,7 @@ impl AppState {
 							},
 							2 => if t > 300000 { //Room conversation is initiated and running
 								roomguard.terminate(user.id.clone());
-								self.users.remove(&id);
+								assert!(self.users.remove(&user.id).is_some());
 								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
 							}
 							x => eprintln!("weird, room has {} users", x),
@@ -268,7 +268,7 @@ impl AppState {
 					}
 				}
 				None => {
-					self.users.remove(&user.id); //There may exist rooms which they have already exit
+					assert!(self.users.remove(&user.id).is_some()); //There may exist rooms which they have already exit
 					debug!("Removed user {}. Age: {}", user.id, user.first_seen.elapsed());
 				}
 			}
@@ -353,7 +353,7 @@ async fn exit_room(
 		muser.room_id = None;
 		if roomguard.terminator.is_some() {
 			//remaining user is leaving
-			stateguard.chats.remove(&roomguard.id);
+			assert!(stateguard.chats.remove(&roomguard.id).is_some());
 		} else {
 			roomguard.terminate(String::from(uid));
 		}
