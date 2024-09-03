@@ -203,15 +203,68 @@ impl ChatRoom {
 
 #[derive(Debug)]
 struct AppConfigState {
-	state: AppState,
+	state: Arc<Mutex<AppState>>,
 	config: Args,
+}
+
+impl AppConfigState {
+	fn cleanup(&mut self) {
+		let mut stateguard = self.state.lock().unwrap();
+		let users_to_remove: Vec<(UserState, u64)> = stateguard
+			.users
+			.iter()
+			.map(|(_, v)| (v.clone(), v.last_seen.elapsed()))
+			.filter(|(_, t)| *t > self.config.max_idle_outside * 1000)
+			.collect();
+		for (user, t) in users_to_remove {
+			match user.room_id {
+				Some(id) => {
+					let room = stateguard
+						.chats
+						.get(&id)
+						.expect("Couldn't find room user points to")
+						.clone(); //clones the arc mutex reference
+					let mut roomguard = room.lock().unwrap();
+					match &roomguard.terminator {
+						Some(terminator) => if *terminator != user.id {
+							//other user left, and now this one too
+							assert!(stateguard.chats.remove(&id).is_some()); //so we remove the room
+							assert!(stateguard.users.remove(&user.id).is_some()); //and the this user
+							debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
+							debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
+						}
+						None => match roomguard.users.len() { //User is in non terminated room
+							1 => { //Room conversation is not initiated, looking for other user
+								assert!(stateguard.chats.remove(&id).is_some());
+								assert!(stateguard.users.remove(&user.id).is_some());
+								assert!(Arc::ptr_eq(&room, &stateguard.next_room.clone().expect("shouldnt be none")));
+								stateguard.next_room = None;
+								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
+								debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
+							},
+							2 => if t > self.config.max_idle_inside * 1000 { //Room conversation is initiated and running
+								roomguard.terminate(user.id.clone());
+								assert!(stateguard.users.remove(&user.id).is_some());
+								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
+							}
+							x => eprintln!("weird, room has {} users", x),
+						}
+					}
+				}
+				None => {
+					assert!(stateguard.users.remove(&user.id).is_some()); //There may exist rooms which they have already exit
+					debug!("Removed user {}. Age: {}", user.id, user.first_seen.elapsed());
+				}
+			}
+		}
+	}
 }
 
 impl Clone for AppConfigState {
 	fn clone(&self) -> Self {
 		Self {
-			state: &self.state.clone(),
-			config: &self.config.clone(),
+			state: self.state.clone(),
+			config: self.config.clone(),
 		}
 	}
 }
@@ -221,59 +274,6 @@ struct AppState {
 	users: HashMap<UserId, UserState>,
 	chats: HashMap<ChatId, Arc<Mutex<ChatRoom>>>,
 	next_room: Option<Arc<Mutex<ChatRoom>>>,
-}
-
-impl AppState {
-
-	fn cleanup(&mut self) {
-		let users_to_remove: Vec<(UserState, u64)> = self
-			.users
-			.iter()
-			.map(|(_, v)| (v.clone(), v.last_seen.elapsed()))
-			.filter(|(_, t)| *t > 20000)
-			.collect();
-		for (user, t) in users_to_remove {
-			match user.room_id {
-				Some(id) => {
-					let room = self
-						.chats
-						.get(&id)
-						.expect("Couldn't find room user points to")
-						.clone(); //clones the arc mutex reference
-					let mut roomguard = room.lock().unwrap();
-					match &roomguard.terminator {
-						Some(terminator) => if *terminator != user.id {
-							//other user left, and now this one too
-							assert!(self.chats.remove(&id).is_some()); //so we remove the room
-							assert!(self.users.remove(&user.id).is_some()); //and the this user
-							debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
-							debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
-						}
-						None => match roomguard.users.len() { //User is in non terminated room
-							1 => { //Room conversation is not initiated, looking for other user
-								assert!(self.chats.remove(&id).is_some());
-								assert!(self.users.remove(&user.id).is_some());
-								assert!(Arc::ptr_eq(&room, &self.next_room.clone().expect("shouldnt be none")));
-								self.next_room = None;
-								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
-								debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
-							},
-							2 => if t > 300000 { //Room conversation is initiated and running
-								roomguard.terminate(user.id.clone());
-								assert!(self.users.remove(&user.id).is_some());
-								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
-							}
-							x => eprintln!("weird, room has {} users", x),
-						}
-					}
-				}
-				None => {
-					assert!(self.users.remove(&user.id).is_some()); //There may exist rooms which they have already exit
-					debug!("Removed user {}. Age: {}", user.id, user.first_seen.elapsed());
-				}
-			}
-		}
-	}
 }
 
 fn format_duration(milliseconds: u64) -> String {
@@ -306,14 +306,12 @@ async fn main() {
 		config: args,
 	};
 
-	let millis = 2000;
-	let cleanupclone = configstate.clone();
+	let mut cleanupclone = configstate.clone();
 	tokio::spawn(async move {
-		let mut interval = time::interval(Duration::from_millis(millis));
+		let mut interval = time::interval(Duration::from_millis(cleanupclone.config.cleanup_poll_frequency));
 		loop {
 			interval.tick().await;
-			let mut stateguard = cleanupclone.lock().unwrap();
-			stateguard.cleanup();
+			cleanupclone.cleanup();
 		}
 	});
 
@@ -332,10 +330,10 @@ async fn main() {
 }
 
 async fn exit_room(
-	State(state): State<Arc<Mutex<AppState>>>,
+	State(sc): State<AppConfigState>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
-	let mut stateguard = state.lock().unwrap();
+	let mut stateguard = sc.state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
 	response_headers.insert("Location", "/".parse().expect("weird"));
 	if let Some((uid, room)) = cookie
@@ -363,10 +361,10 @@ async fn exit_room(
 }
 
 async fn get_index(
-	State(state): State<Arc<Mutex<AppState>>>,
+	State(sc): State<AppConfigState>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
-	let mut stateguard = state.lock().unwrap();
+	let mut stateguard = sc.state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
 	response_headers.insert("Content-Type", "text/html".parse().expect("weird"));
 
@@ -441,10 +439,10 @@ async fn get_index(
 }
 
 async fn read_messages(
-	State(state): State<Arc<Mutex<AppState>>>,
+	State(sc): State<AppConfigState>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 ) -> impl IntoResponse {
-	let mut stateguard = state.lock().unwrap();
+	let mut stateguard = sc.state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
 
 	let user = cookie
@@ -484,11 +482,11 @@ async fn read_messages(
 }
 
 async fn send_message(
-	State(state): State<Arc<Mutex<AppState>>>,
+	State(sc): State<AppConfigState>,
 	TypedHeader(cookie): TypedHeader<Cookie>,
 	body: String,
 ) -> impl IntoResponse {
-	let stateguard = state.lock().unwrap();
+	let stateguard = sc.state.lock().unwrap();
 	let mut response_headers = HeaderMap::new();
 	response_headers.insert("Location", "/".parse().expect("weird"));
 	match cookie
@@ -510,7 +508,7 @@ async fn send_message(
 						roomguard
 							.messages
 							.push(Message::new(Some(uid.to_string()), value.to_string()));
-						if roomguard.messages.len() > 5 {
+						if roomguard.messages.len() > sc.config.max_messages {
 							roomguard.messages.remove(0);
 						}
 					} else {
@@ -529,8 +527,8 @@ async fn send_message(
 	(StatusCode::SEE_OTHER, response_headers)
 }
 
-async fn dump_states(State(state): State<Arc<Mutex<AppState>>>) -> impl IntoResponse {
-	let stateguard = state.lock().unwrap();
+async fn dump_states(State(sc): State<AppConfigState>) -> impl IntoResponse {
+	let stateguard = sc.state.lock().unwrap();
 	let mut dump = String::new();
 	for (id, user) in &stateguard.users {
 		dump = format!(
