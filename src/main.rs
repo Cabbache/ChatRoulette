@@ -10,7 +10,7 @@ use clap::Parser;
 
 use env_logger;
 
-use log::{debug, info, trace};
+use log::{error, warn, debug, trace};
 
 use axum::http::HeaderMap;
 use axum_extra::TypedHeader;
@@ -168,12 +168,7 @@ impl ChatRoom {
 			id: id,
 			users: users,
 			terminator: None,
-			messages: vec![Message {
-				seen: false,
-				sender: None,
-				time: timenow,
-				msg: String::from("Chat initiated"),
-			}],
+			messages: vec![],
 			created: timenow,
 		}
 	}
@@ -183,21 +178,6 @@ impl ChatRoom {
 		self
 			.messages
 			.push(Message::new(None, String::from("User left the room")));
-	}
-
-	fn dump(&self) -> String {
-		self.messages
-			.iter()
-			.map(|msg| {
-				format!(
-					"{}|{}|{}",
-					msg.time,
-					msg.sender.clone().unwrap_or("system".to_string()),
-					msg.msg
-				)
-			})
-			.collect::<Vec<String>>()
-			.join("\n")
 	}
 }
 
@@ -247,7 +227,7 @@ impl AppConfigState {
 								assert!(stateguard.users.remove(&user.id).is_some());
 								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
 							}
-							x => eprintln!("weird, room has {} users", x),
+							x => error!("weird, room has {} users", x),
 						}
 					}
 				}
@@ -413,12 +393,26 @@ async fn get_index(
 				roomguard.users.insert(user.id.clone());
 				let muser = stateguard.users.get_mut(&user.id).unwrap();
 				muser.room_id = Some(roomguard.id.clone());
-				if roomguard.users.len() >= 2 {
+				let usrctr = roomguard.users.len();
+				if usrctr >= 2 {
 					stateguard.next_room = None;
 					if roomguard.terminator.is_some() {
 						context.insert("terminated", &true);
+					} else {
+						assert!(roomguard.messages.len() == 0);
+						roomguard.messages.push(
+							Message {
+								seen: false,
+								sender: None,
+								time: get_timestamp(),
+								msg: String::from("Chat initiated"),
+							}
+						);
+						let mut setiter = roomguard.users.iter();
+						debug!("Initiated chat {} <-> {} ({})", setiter.next().unwrap(), setiter.next().unwrap(), roomguard.id)
 					}
 				} else {
+					warn!("room has {} users. This is not expected here.", usrctr);
 					context.insert("waiting", &true);
 				}
 			}
@@ -504,21 +498,22 @@ async fn send_message(
 				if param == "message" {
 					let mut roomguard = room.lock().unwrap();
 					if !roomguard.terminator.is_some() {
-						//TODO delete old messages to keep max len 1000
+						let msgobj = Message::new(Some(uid.to_string()), value.to_string());
+						trace!("[{}][{}]: '{}'", roomguard.id, uid, value);
 						roomguard
 							.messages
-							.push(Message::new(Some(uid.to_string()), value.to_string()));
+							.push(msgobj);
 						if roomguard.messages.len() > sc.config.max_messages {
 							roomguard.messages.remove(0);
 						}
 					} else {
-						eprintln!("cannot send to terminated room");
+						warn!("cannot send to terminated room");
 					}
 				} else {
-					eprintln!("param not named message");
+					warn!("param not named message");
 				}
 			} else {
-				eprintln!("got weird params");
+				warn!("got weird params");
 			}
 		}
 		None => {}
