@@ -5,4 +5,4 @@
 - page rendered with [tera](https://crates.io/crates/tera)
 
 ## Note
-The [live instance](https://strangerdagner.lol) is on another private branch with additional features.
+The [live instance](https://strangerdanger.lol) is on another private branch with additional features.
