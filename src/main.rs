@@ -10,7 +10,7 @@ use clap::Parser;
 
 use env_logger;
 
-use log::{error, warn, debug, trace};
+use log::{debug, error, trace, warn};
 
 use axum::http::HeaderMap;
 use axum_extra::TypedHeader;
@@ -58,7 +58,11 @@ impl UserState {
 
 /// Chat application configuration parameters
 #[derive(Parser, Clone, Debug)]
-#[command(author = "Your Name <your.email@example.com>", version = "1.0", about = "Chat application with configurable parameters")]
+#[command(
+	author = "Your Name <your.email@example.com>",
+	version = "1.0",
+	about = "Chat application with configurable parameters"
+)]
 struct Args {
 	/// Host address to bind to (default: 0.0.0.0)
 	#[arg(long, default_value = "0.0.0.0")]
@@ -183,8 +187,7 @@ impl ChatRoom {
 
 	fn terminate(&mut self, user: UserId) {
 		self.terminator = Some(user);
-		self
-			.messages
+		self.messages
 			.push(Message::new(None, String::from("User left the room")));
 	}
 }
@@ -214,33 +217,62 @@ impl AppConfigState {
 						.clone();
 					let mut roomguard = room.lock().unwrap();
 					match &roomguard.terminator {
-						Some(terminator) => if *terminator != user.id {
-							assert!(stateguard.chats.remove(&id).is_some()); //so we remove the room
-							assert!(stateguard.users.remove(&user.id).is_some()); //and the this user
-							debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
-							debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
+						Some(terminator) => {
+							if *terminator != user.id {
+								assert!(stateguard.chats.remove(&id).is_some()); //so we remove the room
+								assert!(stateguard.users.remove(&user.id).is_some()); //and the this user
+								debug!(
+									"Removed user {}. Age: {}, rooms: {}",
+									user.id,
+									user.first_seen.elapsed(),
+									user.chat_ctr
+								);
+								debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
+							}
 						}
-						None => match roomguard.users.len() { //User is in non terminated room
-							1 => { //Room conversation is not initiated, looking for other user
+						None => match roomguard.users.len() {
+							//User is in non terminated room
+							1 => {
+								//Room conversation is not initiated, looking for other user
 								assert!(stateguard.chats.remove(&id).is_some());
 								assert!(stateguard.users.remove(&user.id).is_some());
-								assert!(Arc::ptr_eq(&room, &stateguard.next_room.clone().expect("shouldnt be none")));
+								assert!(Arc::ptr_eq(
+									&room,
+									&stateguard.next_room.clone().expect("shouldnt be none")
+								));
 								stateguard.next_room = None;
-								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
+								debug!(
+									"Removed user {}. Age: {}, rooms: {}",
+									user.id,
+									user.first_seen.elapsed(),
+									user.chat_ctr
+								);
 								debug!("Removed room {}. Age: {}", id, roomguard.created.elapsed());
-							},
-							2 => if t > self.config.max_idle_inside * 1000 { //Room conversation is initiated and running
-								roomguard.terminate(user.id.clone());
-								assert!(stateguard.users.remove(&user.id).is_some());
-								debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
+							}
+							2 => {
+								if t > self.config.max_idle_inside * 1000 {
+									//Room conversation is initiated and running
+									roomguard.terminate(user.id.clone());
+									assert!(stateguard.users.remove(&user.id).is_some());
+									debug!(
+										"Removed user {}. Age: {}, rooms: {}",
+										user.id,
+										user.first_seen.elapsed(),
+										user.chat_ctr
+									);
+								}
 							}
 							x => error!("weird, room has {} users", x),
-						}
+						},
 					}
 				}
 				None => {
 					assert!(stateguard.users.remove(&user.id).is_some()); //There may exist rooms which they have already exit
-					debug!("Removed user {}. Age: {}", user.id, user.first_seen.elapsed());
+					debug!(
+						"Removed user {}. Age: {}",
+						user.id,
+						user.first_seen.elapsed()
+					);
 				}
 			}
 		}
@@ -297,7 +329,9 @@ async fn main() {
 
 	let mut cleanupclone = configstate.clone();
 	tokio::spawn(async move {
-		let mut interval = time::interval(Duration::from_millis(cleanupclone.config.cleanup_poll_frequency));
+		let mut interval = time::interval(Duration::from_millis(
+			cleanupclone.config.cleanup_poll_frequency,
+		));
 		loop {
 			interval.tick().await;
 			cleanupclone.cleanup();
@@ -390,7 +424,7 @@ async fn get_index(
 			if roomguard.terminator.is_some() {
 				context.insert("terminated", &true);
 			}
-			if roomguard.users.len() == 1{
+			if roomguard.users.len() == 1 {
 				context.insert("waiting", &true);
 			}
 		}
@@ -407,16 +441,19 @@ async fn get_index(
 						context.insert("terminated", &true);
 					} else {
 						assert!(roomguard.messages.len() == 0);
-						roomguard.messages.push(
-							Message {
-								seen: false,
-								sender: None,
-								time: get_timestamp(),
-								msg: String::from("Chat initiated"),
-							}
-						);
+						roomguard.messages.push(Message {
+							seen: false,
+							sender: None,
+							time: get_timestamp(),
+							msg: String::from("Chat initiated"),
+						});
 						let mut setiter = roomguard.users.iter();
-						debug!("Initiated chat {} <-> {} ({})", setiter.next().unwrap(), setiter.next().unwrap(), roomguard.id)
+						debug!(
+							"Initiated chat {} <-> {} ({})",
+							setiter.next().unwrap(),
+							setiter.next().unwrap(),
+							roomguard.id
+						)
 					}
 				} else {
 					warn!("room has {} users. This is not expected here.", usrctr);
@@ -456,16 +493,16 @@ async fn read_messages(
 
 	let response_html = match user.and_then(|usr| {
 		usr.room_id
-		.and_then(|roomid| stateguard.chats.get(&roomid))
-		.map(|roomref| {
-			let mut roomguard = roomref.lock().unwrap();
-			roomguard
-				.messages
-				.iter_mut()
-				.rev()
-				.map(|msg| msg.pov_mut(&Some(usr.id.clone())))
-				.collect::<Vec<MessageView>>()
-		})
+			.and_then(|roomid| stateguard.chats.get(&roomid))
+			.map(|roomref| {
+				let mut roomguard = roomref.lock().unwrap();
+				roomguard
+					.messages
+					.iter_mut()
+					.rev()
+					.map(|msg| msg.pov_mut(&Some(usr.id.clone())))
+					.collect::<Vec<MessageView>>()
+			})
 	}) {
 		Some(messages) => {
 			let template = include_str!("template/messages.tera");
@@ -475,8 +512,8 @@ async fn read_messages(
 			response_headers.insert("Content-Type", "text/html".parse().expect("weird"));
 			context.insert("messages", &messages);
 			tera.render("messages", &context).unwrap()
-		},
-		None => String::new()
+		}
+		None => String::new(),
 	};
 
 	(response_headers, response_html)
@@ -507,9 +544,7 @@ async fn send_message(
 					if !roomguard.terminator.is_some() {
 						let msgobj = Message::new(Some(uid.to_string()), value.to_string());
 						trace!("[{}][{}]: '{}'", roomguard.id, uid, value);
-						roomguard
-							.messages
-							.push(msgobj);
+						roomguard.messages.push(msgobj);
 						if roomguard.messages.len() > sc.config.max_messages {
 							roomguard.messages.remove(0);
 						}
