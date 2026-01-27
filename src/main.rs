@@ -58,11 +58,7 @@ impl UserState {
 
 /// Chat application configuration parameters
 #[derive(Parser, Clone, Debug)]
-#[command(
-	author = "Cabbache",
-	version = "1.0",
-	about = "Chat Roulette"
-)]
+#[command(author = "Cabbache", version = "1.0", about = "Chat Roulette")]
 struct Args {
 	/// Host address to bind to (default: 0.0.0.0)
 	#[arg(long, default_value = "0.0.0.0")]
@@ -391,7 +387,8 @@ async fn get_index(
 
 	let template = include_str!("template/index.tera");
 	let mut tera = Tera::default();
-	tera.add_raw_template("index", template).unwrap();
+	tera.autoescape_on(vec!["tera"]);
+	tera.add_raw_template("index.tera", template).unwrap();
 	let mut context = Context::new();
 	context.insert("user_ctr", &stateguard.users.len());
 
@@ -472,7 +469,7 @@ async fn get_index(
 		},
 	};
 
-	let response_html = tera.render("index", &context).unwrap();
+	let response_html = tera.render("index.tera", &context).unwrap();
 	(response_headers, response_html)
 }
 
@@ -507,11 +504,12 @@ async fn read_messages(
 		Some(messages) => {
 			let template = include_str!("template/messages.tera");
 			let mut tera = Tera::default();
-			tera.add_raw_template("messages", template).unwrap();
+			tera.autoescape_on(vec!["tera"]);
+			tera.add_raw_template("messages.tera", template).unwrap();
 			let mut context = Context::new();
 			response_headers.insert("Content-Type", "text/html".parse().expect("weird"));
 			context.insert("messages", &messages);
-			tera.render("messages", &context).unwrap()
+			tera.render("messages.tera", &context).unwrap()
 		}
 		None => String::new(),
 	};
