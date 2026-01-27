@@ -60,6 +60,14 @@ impl UserState {
 #[derive(Parser, Clone, Debug)]
 #[command(author = "Your Name <your.email@example.com>", version = "1.0", about = "Chat application with configurable parameters")]
 struct Args {
+	/// Host address to bind to (default: 0.0.0.0)
+	#[arg(long, default_value = "0.0.0.0")]
+	host: String,
+
+	/// Port to listen on (default: 3000)
+	#[arg(short, long, default_value_t = 3000)]
+	port: u16,
+
 	/// Cleanup poll frequency in milliseconds (default: 5000)
 	#[arg(long, default_value_t = 5000)]
 	cleanup_poll_frequency: u64,
@@ -128,7 +136,7 @@ impl Message {
 			},
 			time: format_duration(elapsed),
 			msg: self.msg.clone(),
-			seen: self.seen, //true if seen by the other user (not self.sender)
+			seen: self.seen,
 		}
 	}
 
@@ -203,11 +211,10 @@ impl AppConfigState {
 						.chats
 						.get(&id)
 						.expect("Couldn't find room user points to")
-						.clone(); //clones the arc mutex reference
+						.clone();
 					let mut roomguard = room.lock().unwrap();
 					match &roomguard.terminator {
 						Some(terminator) => if *terminator != user.id {
-							//other user left, and now this one too
 							assert!(stateguard.chats.remove(&id).is_some()); //so we remove the room
 							assert!(stateguard.users.remove(&user.id).is_some()); //and the this user
 							debug!("Removed user {}. Age: {}, rooms: {}", user.id, user.first_seen.elapsed(), user.chat_ctr);
@@ -286,6 +293,8 @@ async fn main() {
 		config: args,
 	};
 
+	let bind_addr = format!("{}:{}", configstate.config.host, configstate.config.port);
+
 	let mut cleanupclone = configstate.clone();
 	tokio::spawn(async move {
 		let mut interval = time::interval(Duration::from_millis(cleanupclone.config.cleanup_poll_frequency));
@@ -295,7 +304,6 @@ async fn main() {
 		}
 	});
 
-	// build our application with a route
 	let app = Router::new()
 		.route("/", get(get_index))
 		.route("/messages", get(read_messages))
@@ -304,8 +312,8 @@ async fn main() {
 		.route("/", post(send_message))
 		.with_state(configstate);
 
-	// run our app with hyper, listening globally on port 3000
-	let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+	let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
+	debug!("Listening on {}", bind_addr);
 	axum::serve(listener, app).await.unwrap();
 }
 
@@ -330,7 +338,6 @@ async fn exit_room(
 		let muser = stateguard.users.get_mut(uid).unwrap();
 		muser.room_id = None;
 		if roomguard.terminator.is_some() {
-			//remaining user is leaving
 			assert!(stateguard.chats.remove(&roomguard.id).is_some());
 		} else {
 			roomguard.terminate(String::from(uid));
