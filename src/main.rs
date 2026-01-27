@@ -59,9 +59,9 @@ impl UserState {
 /// Chat application configuration parameters
 #[derive(Parser, Clone, Debug)]
 #[command(
-	author = "Your Name <your.email@example.com>",
+	author = "Cabbache",
 	version = "1.0",
-	about = "Chat application with configurable parameters"
+	about = "Chat Roulette"
 )]
 struct Args {
 	/// Host address to bind to (default: 0.0.0.0)
