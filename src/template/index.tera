@@ -205,7 +205,7 @@
 </head>
 <body>
     <header>
-			<h1>Strangerdanger.lol</h1>
+			<h1>{{ site_name }}</h1>
 			<div>
 				active users: {{ user_ctr }}
 			</div>

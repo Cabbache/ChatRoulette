@@ -83,6 +83,10 @@ struct Args {
 	/// Max idle time inside chat in seconds (default: 300)
 	#[arg(long, default_value_t = 300)]
 	max_idle_inside: u64,
+
+	/// Site name displayed in the header
+	#[arg(long, default_value = "Strangerdanger.lol")]
+	site_name: String,
 }
 
 #[derive(Clone, Debug)]
@@ -391,6 +395,7 @@ async fn get_index(
 	tera.add_raw_template("index.tera", template).unwrap();
 	let mut context = Context::new();
 	context.insert("user_ctr", &stateguard.users.len());
+	context.insert("site_name", &sc.config.site_name);
 
 	let user = {
 		let user = cookie
